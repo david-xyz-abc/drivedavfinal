@@ -5,7 +5,7 @@
 # Run this as root (e.g., sudo bash install.sh)
 #
 # Your PHP files are hosted at:
-#   https://github.com/david-xyz-abc/drivedav
+#   https://github.com/david-xyz-abc/drivedavfinal
 #
 # They will be fetched from the "main" branch using the raw GitHub URL.
 
@@ -25,10 +25,10 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-# Set the base URL where your PHP files are hosted.
-BASE_URL="https://raw.githubusercontent.com/david-xyz-abc/drivedav/main"
+# Set the base URL where your PHP files are hosted (updated to new repo).
+BASE_URL="https://raw.githubusercontent.com/david-xyz-abc/drivedavfinal/main"
 
-# List of required PHP files (updated to include register.php)
+# List of required PHP files (includes register.php)
 FILES=("index.php" "authenticate.php" "explorer.php" "logout.php" "register.php")
 
 # Update package lists
