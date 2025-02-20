@@ -12,13 +12,119 @@ session_start();
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
 
   <style>
-    /* [Existing styles remain unchanged] */
+    :root {
+      --background: #121212;
+      --text-color: #fff;
+      --content-bg: #1e1e1e;
+      --border-color: #333;
+      --button-bg: linear-gradient(135deg, #555, #777);
+      --button-hover: linear-gradient(135deg, #777, #555);
+      --accent-blue: #4a90e2;
+    }
+    body.light-mode {
+      --background: #f5f5f5;
+      --text-color: #333;
+      --content-bg: #fff;
+      --border-color: #ccc;
+      --button-bg: linear-gradient(135deg, #888, #aaa);
+      --button-hover: linear-gradient(135deg, #aaa, #888);
+      --accent-blue: #1e88e5;
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+    body {
+      background: var(--background);
+      color: var(--text-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      transition: background 0.3s, color 0.3s;
+    }
+    .login-container {
+      background: var(--content-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 30px;
+      width: 350px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      background: url('https://via.placeholder.com/80/ffffff/000000?text=Logo') no-repeat center center;
+      background-size: cover;
+      margin: 0 auto 15px;
+      border-radius: 50%;
+    }
+    .project-name {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 25px;
+      color: var(--text-color);
+    }
+    .error {
+      color: #f44336;
+      margin-bottom: 15px;
+    }
+    .form-group {
+      text-align: left;
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #ccc;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 10px;
+      background: #2a2a2a;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-color);
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+    .button {
+      width: 100%;
+      padding: 12px;
+      background: var(--button-bg);
+      border: none;
+      border-radius: 4px;
+      color: var(--text-color);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+    .button:hover {
+      background: var(--button-hover);
+      transform: scale(1.03);
+    }
+    .button:active {
+      transform: scale(0.98);
+    }
     .toggle-link {
-      color: #4a90e2;
+      color: var(--accent-blue);
       cursor: pointer;
       text-decoration: underline;
       margin-top: 15px;
       display: inline-block;
+      transition: color 0.3s;
+    }
+    .toggle-link:hover {
+      color: #66b0ff;
     }
     .hidden {
       display: none;
@@ -36,7 +142,7 @@ session_start();
           unset($_SESSION['error']);
       }
       if (isset($_SESSION['message'])) {
-          echo '<div style="color: #4a90e2; margin-bottom: 15px;">' . htmlspecialchars($_SESSION['message']) . '</div>';
+          echo '<div style="color: var(--accent-blue); margin-bottom: 15px;">' . htmlspecialchars($_SESSION['message']) . '</div>';
           unset($_SESSION['message']);
       }
     ?>
