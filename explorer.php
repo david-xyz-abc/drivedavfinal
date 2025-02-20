@@ -2,7 +2,7 @@
 session_start();
 
 // Debug log setup
-$debug_log = '/var/www/html/selfhostedgdrive/debug.log'; // Moved from /tmp
+$debug_log = '/var/www/html/selfhostedgdrive/debug.log';
 if (!file_exists($debug_log)) {
     file_put_contents($debug_log, "Debug log initialized\n");
     chown($debug_log, 'www-data');
@@ -15,13 +15,15 @@ file_put_contents($debug_log, "GET params: " . var_export($_GET, true) . "\n", F
 
 // Handle file serving first
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
-    if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+    if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
         file_put_contents($debug_log, "Unauthorized file request, redirecting to index.php\n", FILE_APPEND);
         header("Location: index.php");
         exit;
     }
 
-    $baseDir = realpath("/var/www/html/webdav/Home");
+    // Use user-specific base directory
+    $username = $_SESSION['username'];
+    $baseDir = realpath("/var/www/html/webdav/users/$username/Home");
     $filePath = realpath($baseDir . '/' . urldecode($_GET['file']));
     file_put_contents($debug_log, "File request: " . $_GET['file'] . "\n", FILE_APPEND);
     file_put_contents($debug_log, "Resolved file path: " . ($filePath ? $filePath : "Not found") . "\n", FILE_APPEND);
@@ -50,7 +52,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
 }
 
 // Check if user is logged in for page access
-if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
     file_put_contents($debug_log, "Redirecting to index.php due to no login\n", FILE_APPEND);
     header("Location: index.php");
     exit;
@@ -59,11 +61,11 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
 /************************************************
  * 1. Define the "Home" directory as base
  ************************************************/
-$username = $_SESSION['username']; // Get logged-in username
+$username = $_SESSION['username'];
 $homeDirPath = "/var/www/html/webdav/users/$username/Home";
 if (!is_dir($homeDirPath)) {
     mkdir($homeDirPath, 0777, true);
-    chown($homeDirPath, 'www-data'); // Adjust based on your web server user
+    chown($homeDirPath, 'www-data');
     chgrp($homeDirPath, 'www-data');
 }
 $baseDir = realpath($homeDirPath);
@@ -202,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename_file'])) {
  * 9. Gather folders & files
  ************************************************/
 $folders = [];
-$files   = [];
+$files = [];
 if (is_dir($currentDir)) {
     $all = scandir($currentDir);
     foreach ($all as $one) {
@@ -236,10 +238,10 @@ if ($currentDir !== $baseDir) {
  ************************************************/
 function getIconClass($fileName) {
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    if (in_array($ext, ['png','jpg','jpeg','gif','heic'])) {
+    if (in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'heic'])) {
         return 'fas fa-file-image';
     }
-    if (in_array($ext, ['mp4','webm','mov','avi','mkv'])) {
+    if (in_array($ext, ['mp4', 'webm', 'mov', 'avi', 'mkv'])) {
         return 'fas fa-file-video';
     }
     if ($ext === 'pdf') {
@@ -256,11 +258,11 @@ function getIconClass($fileName) {
  ************************************************/
 function isImage($fileName) {
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    return in_array($ext, ['png','jpg','jpeg','gif','heic']);
+    return in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'heic']);
 }
 function isVideo($fileName) {
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    return in_array($ext, ['mp4','webm','mov','avi','mkv']);
+    return in_array($ext, ['mp4', 'webm', 'mov', 'avi', 'mkv']);
 }
 ?>
 <!DOCTYPE html>
@@ -1048,7 +1050,7 @@ function isVideo($fileName) {
 
   function downloadFile(fileURL) {
     console.log("Downloading: " + fileURL);
-    window.location.href = fileURL; // Direct redirect to trigger download
+    window.location.href = fileURL;
   }
 
   const uploadForm = document.getElementById('uploadForm');
