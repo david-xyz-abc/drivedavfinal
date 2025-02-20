@@ -20,8 +20,7 @@ session_start();
       --border-color: #333;
       --button-bg: linear-gradient(135deg, #555, #777);
       --button-hover: linear-gradient(135deg, #777, #555);
-      --accent-blue: #4a90e2;
-      --accent-red: #d32f2f; /* Matches explorer.php dark mode */
+      --accent-red: #d32f2f; /* Red for dark mode, matches explorer.php */
     }
     body.light-mode {
       --background: #f5f5f5;
@@ -30,8 +29,7 @@ session_start();
       --border-color: #ccc;
       --button-bg: linear-gradient(135deg, #888, #aaa);
       --button-hover: linear-gradient(135deg, #aaa, #888);
-      --accent-blue: #1e88e5;
-      --accent-red: #f44336; /* Matches explorer.php light mode */
+      --accent-red: #f44336; /* Red for light mode, matches explorer.php */
     }
     * {
       margin: 0;
@@ -60,7 +58,7 @@ session_start();
     .logo-icon {
       font-size: 50px;
       margin-bottom: 15px;
-      color: var(--accent-blue);
+      color: var(--accent-red); /* Changed from blue to red */
     }
     .project-name {
       font-size: 18px;
@@ -69,7 +67,7 @@ session_start();
       color: var(--text-color);
     }
     .error {
-      color: var(--accent-red);
+      color: var(--accent-red); /* Error messages in red */
       margin-bottom: 15px;
     }
     .form-group {
@@ -94,7 +92,7 @@ session_start();
     }
     .form-group input:focus {
       outline: none;
-      border-color: var(--accent-blue);
+      border-color: var(--accent-red); /* Changed from blue to red */
     }
     .button {
       width: 100%;
@@ -123,7 +121,7 @@ session_start();
       transform: scale(1.03);
     }
     .toggle-link {
-      color: var(--accent-blue);
+      color: var(--accent-red); /* Changed from blue to red */
       cursor: pointer;
       text-decoration: underline;
       margin-top: 15px;
@@ -131,7 +129,7 @@ session_start();
       transition: color 0.3s;
     }
     .toggle-link:hover {
-      color: #66b0ff;
+      color: #ff6666; /* Lighter red for hover */
     }
     .hidden {
       display: none;
@@ -149,7 +147,7 @@ session_start();
           unset($_SESSION['error']);
       }
       if (isset($_SESSION['message'])) {
-          echo '<div style="color: var(--accent-blue); margin-bottom: 15px;">' . htmlspecialchars($_SESSION['message']) . '</div>';
+          echo '<div style="color: var(--accent-red); margin-bottom: 15px;">' . htmlspecialchars($_SESSION['message']) . '</div>';
           unset($_SESSION['message']);
       }
     ?>
