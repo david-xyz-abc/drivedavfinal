@@ -285,6 +285,8 @@ function isVideo($fileName) {
     --button-bg: linear-gradient(135deg, #555, #777);
     --button-hover: linear-gradient(135deg, #777, #555);
     --accent-red: #d32f2f; /* Darker red for dark mode */
+    --dropzone-bg: rgba(211, 47, 47, 0.1); /* Light red tint for drop zone */
+    --dropzone-border: #d32f2f;
   }
   body.light-mode {
     --background: #f5f5f5;
@@ -295,6 +297,8 @@ function isVideo($fileName) {
     --button-bg: linear-gradient(135deg, #888, #aaa);
     --button-hover: linear-gradient(135deg, #aaa, #888);
     --accent-red: #f44336; /* Normal red for light mode */
+    --dropzone-bg: rgba(244, 67, 54, 0.1);
+    --dropzone-border: #f44336;
   }
   html, body {
     margin: 0;
@@ -463,6 +467,7 @@ function isVideo($fileName) {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative; /* For drop zone positioning */
   }
   .header-area {
     flex-shrink: 0;
@@ -472,6 +477,7 @@ function isVideo($fileName) {
     padding: 20px;
     border-bottom: 1px solid var(--border-color);
     background: var(--background);
+    z-index: 10; /* Above drop zone */
   }
   .header-title {
     display: flex;
@@ -500,6 +506,7 @@ function isVideo($fileName) {
     flex: 1;
     overflow-y: auto;
     padding: 20px;
+    position: relative; /* For drop zone */
   }
   .file-list {
     display: flex;
@@ -703,6 +710,29 @@ function isVideo($fileName) {
   .theme-toggle-btn i {
     color: var(--text-color);
   }
+  /* Drag and Drop Styles */
+  #dropZone {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--dropzone-bg);
+    border: 3px dashed var(--dropzone-border);
+    z-index: 5;
+    justify-content: center;
+    align-items: center;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--accent-red);
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  #dropZone.active {
+    display: flex;
+  }
 </style>
 </head>
 <body>
@@ -747,33 +777,34 @@ function isVideo($fileName) {
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <div class="main-content">
-    <div class="header-area">
-  <div class="header-title">
-    <button class="hamburger" onclick="toggleSidebar()">
-      <i class="fas fa-bars"></i>
-    </button>
-    <h1><?php echo ($currentRel === 'Home') ? 'Home' : htmlspecialchars($currentRel); ?></h1>
-  </div>
-  <div style="display: flex; gap: 10px;">
-    <form id="uploadForm" method="POST" enctype="multipart/form-data" action="explorer.php?folder=<?php echo urlencode($currentRel); ?>">
-      <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" />
-      <button type="button" class="btn" id="uploadBtn" title="Upload" style="width:36px; height:36px;">
-        <i class="fas fa-cloud-upload-alt"></i>
-      </button>
-    </form>
-    <button type="button" class="btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme" style="width:36px; height:36px;">
-      <i class="fas fa-moon"></i>
-    </button>
-    <div id="uploadProgressContainer">
-      <div style="background:var(--border-color); width:100%; height:20px; border-radius:4px; overflow:hidden;">
-        <div id="uploadProgressBar"></div>
+      <div class="header-area">
+        <div class="header-title">
+          <button class="hamburger" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+          </button>
+          <h1><?php echo ($currentRel === 'Home') ? 'Home' : htmlspecialchars($currentRel); ?></h1>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <form id="uploadForm" method="POST" enctype="multipart/form-data" action="explorer.php?folder=<?php echo urlencode($currentRel); ?>">
+            <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" />
+            <button type="button" class="btn" id="uploadBtn" title="Upload" style="width:36px; height:36px;">
+              <i class="fas fa-cloud-upload-alt"></i>
+            </button>
+          </form>
+          <button type="button" class="btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme" style="width:36px; height:36px;">
+            <i class="fas fa-moon"></i>
+          </button>
+          <div id="uploadProgressContainer">
+            <div style="background:var(--border-color); width:100%; height:20px; border-radius:4px; overflow:hidden;">
+              <div id="uploadProgressBar"></div>
+            </div>
+            <div id="uploadProgressPercent">0%</div>
+            <button class="cancel-upload-btn" id="cancelUploadBtn">Cancel</button>
+          </div>
+        </div>
       </div>
-      <div id="uploadProgressPercent">0%</div>
-      <button class="cancel-upload-btn" id="cancelUploadBtn">Cancel</button>
-    </div>
-  </div>
-</div>
       <div class="content-inner">
+        <div id="dropZone">Drop files here to upload</div>
         <div class="file-list">
           <?php foreach ($files as $fileName): ?>
             <?php
@@ -1060,6 +1091,8 @@ function isVideo($fileName) {
   const uploadProgressBar = document.getElementById('uploadProgressBar');
   const uploadProgressPercent = document.getElementById('uploadProgressPercent');
   const cancelUploadBtn = document.getElementById('cancelUploadBtn');
+  const dropZone = document.getElementById('dropZone');
+  const mainContent = document.querySelector('.main-content');
 
   uploadBtn.addEventListener('click', () => {
     fileInput.click();
@@ -1068,6 +1101,25 @@ function isVideo($fileName) {
     if (!fileInput.files.length) return;
     startUpload(fileInput.files);
   });
+
+  // Drag and Drop Event Listeners
+  mainContent.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('active');
+  });
+  mainContent.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('active');
+  });
+  mainContent.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('active');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      startUpload(files);
+    }
+  });
+
   function startUpload(fileList) {
     const formData = new FormData(uploadForm);
     formData.delete("upload_files[]");
