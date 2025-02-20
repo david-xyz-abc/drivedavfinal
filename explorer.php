@@ -582,7 +582,7 @@ function isVideo($fileName) {
   #uploadProgressBar {
     height: 20px;
     width: 0%;
-    background: var(--button-bg);
+    background: var(--accent-red);
     border-radius: 4px;
     transition: width 0.1s ease;
   }
