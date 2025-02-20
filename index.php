@@ -5,11 +5,12 @@ session_start();
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Self Hosted Google Drive - Login</title>
+  <title>DrivePulse - Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"/>
 
   <style>
     :root {
@@ -20,6 +21,7 @@ session_start();
       --button-bg: linear-gradient(135deg, #555, #777);
       --button-hover: linear-gradient(135deg, #777, #555);
       --accent-blue: #4a90e2;
+      --accent-red: #d32f2f; /* Matches explorer.php dark mode */
     }
     body.light-mode {
       --background: #f5f5f5;
@@ -29,6 +31,7 @@ session_start();
       --button-bg: linear-gradient(135deg, #888, #aaa);
       --button-hover: linear-gradient(135deg, #aaa, #888);
       --accent-blue: #1e88e5;
+      --accent-red: #f44336; /* Matches explorer.php light mode */
     }
     * {
       margin: 0;
@@ -54,13 +57,10 @@ session_start();
       box-shadow: 0 4px 8px rgba(0,0,0,0.3);
       text-align: center;
     }
-    .logo {
-      width: 80px;
-      height: 80px;
-      background: url('https://via.placeholder.com/80/ffffff/000000?text=Logo') no-repeat center center;
-      background-size: cover;
-      margin: 0 auto 15px;
-      border-radius: 50%;
+    .logo-icon {
+      font-size: 50px;
+      margin-bottom: 15px;
+      color: var(--accent-blue);
     }
     .project-name {
       font-size: 18px;
@@ -69,7 +69,7 @@ session_start();
       color: var(--text-color);
     }
     .error {
-      color: #f44336;
+      color: var(--accent-red);
       margin-bottom: 15px;
     }
     .form-group {
@@ -115,6 +115,13 @@ session_start();
     .button:active {
       transform: scale(0.98);
     }
+    .register-button {
+      background: linear-gradient(135deg, var(--accent-red), #b71c1c);
+    }
+    .register-button:hover {
+      background: linear-gradient(135deg, #b71c1c, var(--accent-red));
+      transform: scale(1.03);
+    }
     .toggle-link {
       color: var(--accent-blue);
       cursor: pointer;
@@ -133,8 +140,8 @@ session_start();
 </head>
 <body>
   <div class="login-container">
-    <div class="logo"></div>
-    <div class="project-name">Self Hosted Google Drive</div>
+    <i class="fas fa-cloud-upload-alt logo-icon"></i>
+    <div class="project-name">DrivePulse</div>
 
     <?php 
       if (isset($_SESSION['error'])) {
@@ -176,7 +183,7 @@ session_start();
         <input type="password" id="reg_password" name="password" required>
       </div>
 
-      <button type="submit" class="button">Register</button>
+      <button type="submit" class="button register-button">Register</button>
     </form>
 
     <span class="toggle-link hidden" onclick="toggleForms()" id="loginLink">Already have an account? Sign in</span>
