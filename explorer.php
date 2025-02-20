@@ -11,6 +11,7 @@ if (!file_exists($debug_log)) {
 file_put_contents($debug_log, "=== New Request ===\n", FILE_APPEND);
 file_put_contents($debug_log, "Session ID: " . session_id() . "\n", FILE_APPEND);
 file_put_contents($debug_log, "Loggedin: " . (isset($_SESSION['loggedin']) ? var_export($_SESSION['loggedin'], true) : "Not set") . "\n", FILE_APPEND);
+file_put_contents($debug_log, "Username: " . (isset($_SESSION['username']) ? $_SESSION['username'] : "Not set") . "\n", FILE_APPEND);
 file_put_contents($debug_log, "GET params: " . var_export($_GET, true) . "\n", FILE_APPEND);
 
 // Handle file serving first
@@ -71,6 +72,13 @@ if (!is_dir($homeDirPath)) {
 $baseDir = realpath($homeDirPath);
 file_put_contents($debug_log, "BaseDir: $baseDir (User: $username)\n", FILE_APPEND);
 
+// Redirect to Home folder by default if no folder specified
+if (!isset($_GET['folder'])) {
+    file_put_contents($debug_log, "No folder specified, redirecting to Home\n", FILE_APPEND);
+    header("Location: explorer.php?folder=Home");
+    exit;
+}
+
 /************************************************
  * 2. Determine current folder (GET param)
  ************************************************/
@@ -78,7 +86,7 @@ $currentRel = isset($_GET['folder']) ? $_GET['folder'] : 'Home';
 $currentRel = trim(str_replace('..', '', $currentRel), '/');
 $currentDir = realpath($baseDir . '/' . $currentRel);
 file_put_contents($debug_log, "CurrentRel: $currentRel\n", FILE_APPEND);
-file_put_contents($debug_log, "CurrentDir: $currentDir\n", FILE_APPEND);
+file_put_contents($debug_log, "CurrentDir: " . ($currentDir ? $currentDir : "Not resolved") . "\n", FILE_APPEND);
 
 if ($currentDir === false || strpos($currentDir, $baseDir) !== 0) {
     file_put_contents($debug_log, "Invalid folder, resetting to Home\n", FILE_APPEND);
@@ -95,6 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_folder'])) {
         $targetPath = $currentDir . '/' . $folderName;
         if (!file_exists($targetPath)) {
             mkdir($targetPath, 0777);
+            chown($targetPath, 'www-data');
+            chgrp($targetPath, 'www-data');
             file_put_contents($debug_log, "Created folder: $targetPath\n", FILE_APPEND);
         }
     }
@@ -111,7 +121,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
             $tmpPath = $_FILES['upload_files']['tmp_name'][$i];
             $dest = $currentDir . '/' . basename($fname);
             move_uploaded_file($tmpPath, $dest);
+            chown($dest, 'www-data');
+            chgrp($dest, 'www-data');
+            chmod($dest, 0664);
             file_put_contents($debug_log, "Uploaded file: $dest\n", FILE_APPEND);
+        } else {
+            file_put_contents($debug_log, "Upload error for $fname: " . $_FILES['upload_files']['error'][$i] . "\n", FILE_APPEND);
         }
     }
     header("Location: explorer.php?folder=" . urlencode($currentRel));
@@ -1081,7 +1096,21 @@ function isVideo($fileName) {
 
   function downloadFile(fileURL) {
     console.log("Downloading: " + fileURL);
-    window.location.href = fileURL;
+    fetch(fileURL)
+      .then(response => {
+        if (!response.ok) throw new Error('Download failed: ' + response.status);
+        return response.blob();
+      })
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileURL.split('/').pop().split('&')[0]; // Extract filename from URL
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      })
+      .catch(error => showAlert('Download error: ' + error.message));
   }
 
   const uploadForm = document.getElementById('uploadForm');
@@ -1165,25 +1194,30 @@ function isVideo($fileName) {
     const previewContainer = document.getElementById('previewContainer');
     previewContainer.innerHTML = '';
     let lowerName = fileName.toLowerCase();
-    if (lowerName.match(/\.(png|jpe?g|gif|heic)$/)) {
-      let img = document.createElement('img');
-      img.src = fileURL;
-      img.onerror = () => console.log("Image failed to load: " + fileURL);
-      img.onload = () => console.log("Image loaded: " + fileURL);
-      previewContainer.appendChild(img);
-    } else if (lowerName.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
-      let video = document.createElement('video');
-      video.src = fileURL;
-      video.controls = true;
-      video.autoplay = true;
-      video.onerror = () => console.log("Video failed to load: " + fileURL);
-      video.onload = () => console.log("Video loaded: " + fileURL);
-      previewContainer.appendChild(video);
-    } else {
-      downloadFile(fileURL);
-      return;
-    }
-    document.getElementById('previewModal').style.display = 'flex';
+    fetch(fileURL)
+      .then(response => {
+        if (!response.ok) throw new Error('Preview failed: ' + response.status);
+        return response.blob();
+      })
+      .then(blob => {
+        const blobURL = URL.createObjectURL(blob);
+        if (lowerName.match(/\.(png|jpe?g|gif|heic)$/)) {
+          let img = document.createElement('img');
+          img.src = blobURL;
+          previewContainer.appendChild(img);
+        } else if (lowerName.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
+          let video = document.createElement('video');
+          video.src = blobURL;
+          video.controls = true;
+          video.autoplay = true;
+          previewContainer.appendChild(video);
+        } else {
+          downloadFile(fileURL);
+          return;
+        }
+        document.getElementById('previewModal').style.display = 'flex';
+      })
+      .catch(error => showAlert('Preview error: ' + error.message));
   }
   window.openPreviewModal = openPreviewModal;
   function closePreviewModal() {
