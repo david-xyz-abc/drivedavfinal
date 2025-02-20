@@ -25,8 +25,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     // Use user-specific base directory
     $username = $_SESSION['username'];
     $baseDir = realpath("/var/www/html/webdav/users/$username/Home");
-    $filePath = realpath($baseDir . '/' . urldecode($_GET['file']));
+    // Strip leading "Home/" from the file path if present
+    $requestedFile = urldecode($_GET['file']);
+    if (strpos($requestedFile, 'Home/') === 0) {
+        $requestedFile = substr($requestedFile, 5); // Remove "Home/"
+    }
+    $filePath = realpath($baseDir . '/' . $requestedFile);
     file_put_contents($debug_log, "File request: " . $_GET['file'] . "\n", FILE_APPEND);
+    file_put_contents($debug_log, "Adjusted file: " . $requestedFile . "\n", FILE_APPEND);
     file_put_contents($debug_log, "Resolved file path: " . ($filePath ? $filePath : "Not found") . "\n", FILE_APPEND);
 
     if ($filePath && strpos($filePath, $baseDir) === 0 && file_exists($filePath)) {
