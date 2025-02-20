@@ -1,7 +1,8 @@
 #!/bin/bash
 # Beginner-Friendly Installer for Self Hosted Google Drive (DriveDAV)
 # This script installs Apache, PHP, required modules, downloads your PHP files
-# from GitHub, creates necessary folders, sets proper permissions, and adjusts PHP's size limits.
+# from GitHub, creates necessary folders, sets proper permissions, adjusts PHP's size limits
+# for both CLI and Apache php.ini files, and verifies both.
 # Run this as root (e.g., sudo bash install.sh)
 #
 # Your PHP files are hosted at:
@@ -35,9 +36,9 @@ FILES=("index.php" "authenticate.php" "explorer.php" "logout.php" "register.php"
 echo "Updating package lists..."
 apt-get update
 
-# Install Apache, PHP, and required PHP modules along with wget for downloading files
+# Install Apache, PHP, and required PHP modules along with wget and curl for verification
 echo "Installing Apache, PHP, and required modules..."
-apt-get install -y apache2 php libapache2-mod-php php-cli php-json php-mbstring php-xml wget
+apt-get install -y apache2 php libapache2-mod-php php-cli php-json php-mbstring php-xml wget curl
 
 # Define application directories
 APP_DIR="/var/www/html/selfhostedgdrive"
@@ -74,25 +75,48 @@ mkdir -p "$WEBDAV_USERS_DIR"
 chown -R www-data:www-data "/var/www/html/webdav"
 chmod -R 775 "/var/www/html/webdav"  # 775 to allow group write access
 
-# Locate the php.ini file used by Apache
-PHP_INI=$(php --ini | grep "Loaded Configuration" | sed -E 's|^.*:\s+||' | head -n 1)
-if [ -z "$PHP_INI" ]; then
-  echo "ERROR: Unable to detect php.ini. Exiting."
+# Determine PHP version
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')
+
+# Locate the php.ini files for CLI and Apache
+CLI_PHP_INI="/etc/php/$PHP_VERSION/cli/php.ini"
+APACHE_PHP_INI="/etc/php/$PHP_VERSION/apache2/php.ini"
+
+# Check if both php.ini files exist
+if [ ! -f "$CLI_PHP_INI" ]; then
+  echo "ERROR: CLI php.ini not found at $CLI_PHP_INI. Exiting."
   exit 1
 fi
+if [ ! -f "$APACHE_PHP_INI" ]; then
+  echo "WARNING: Apache php.ini not found at $APACHE_PHP_INI. Copying from CLI..."
+  mkdir -p "$(dirname "$APACHE_PHP_INI")"
+  cp "$CLI_PHP_INI" "$APACHE_PHP_INI"
+fi
 
-echo "Found php.ini at: $PHP_INI"
-echo "Backing up php.ini to ${PHP_INI}.backup..."
-cp "$PHP_INI" "${PHP_INI}.backup"
+echo "Found CLI php.ini at: $CLI_PHP_INI"
+echo "Found Apache php.ini at: $APACHE_PHP_INI"
 
-# Update PHP configuration to allow larger file uploads
-echo "Adjusting PHP size limits in $PHP_INI..."
-sed -i 's/^\s*upload_max_filesize\s*=.*/upload_max_filesize = 10G/' "$PHP_INI"
-sed -i 's/^\s*post_max_size\s*=.*/post_max_size = 11G/' "$PHP_INI"
-sed -i 's/^\s*memory_limit\s*=.*/memory_limit = 12G/' "$PHP_INI"
-sed -i 's/^\s*max_execution_time\s*=.*/max_execution_time = 3600/' "$PHP_INI"
-sed -i 's/^\s*max_input_time\s*=.*/max_input_time = 3600/' "$PHP_INI"
-echo "PHP configuration updated (backup saved as ${PHP_INI}.backup)"
+# Backup both php.ini files
+echo "Backing up CLI php.ini to ${CLI_PHP_INI}.backup..."
+cp "$CLI_PHP_INI" "${CLI_PHP_INI}.backup"
+echo "Backing up Apache php.ini to ${APACHE_PHP_INI}.backup..."
+cp "$APACHE_PHP_INI" "${APACHE_PHP_INI}.backup"
+
+# Function to update PHP configuration
+update_php_ini() {
+  local ini_file="$1"
+  echo "Adjusting PHP size limits in $ini_file..."
+  sed -i 's/^\s*upload_max_filesize\s*=.*/upload_max_filesize = 10G/' "$ini_file"
+  sed -i 's/^\s*post_max_size\s*=.*/post_max_size = 11G/' "$ini_file"
+  sed -i 's/^\s*memory_limit\s*=.*/memory_limit = 12G/' "$ini_file"
+  sed -i 's/^\s*max_execution_time\s*=.*/max_execution_time = 3600/' "$ini_file"
+  sed -i 's/^\s*max_input_time\s*=.*/max_input_time = 3600/' "$ini_file"
+}
+
+# Update both php.ini files
+update_php_ini "$CLI_PHP_INI"
+update_php_ini "$APACHE_PHP_INI"
+echo "PHP configuration updated for both CLI and Apache (backups saved)"
 
 # Enable Apache mod_rewrite (optional)
 echo "Enabling Apache mod_rewrite..."
@@ -101,6 +125,35 @@ a2enmod rewrite
 # Restart Apache to apply changes
 echo "Restarting Apache..."
 systemctl restart apache2
+
+# Verify the changes for both CLI and Apache
+echo "======================================"
+echo "Verifying CLI php.ini values..."
+echo "--------------------------------------"
+php -r '
+echo "upload_max_filesize: " . ini_get("upload_max_filesize") . "\n";
+echo "post_max_size: " . ini_get("post_max_size") . "\n";
+echo "memory_limit: " . ini_get("memory_limit") . "\n";
+echo "max_execution_time: " . ini_get("max_execution_time") . "\n";
+echo "max_input_time: " . ini_get("max_input_time") . "\n";
+'
+
+echo "======================================"
+echo "Verifying Apache php.ini values..."
+echo "--------------------------------------"
+cat << 'EOF' > "$APP_DIR/check_ini.php"
+<?php
+echo "upload_max_filesize: " . ini_get('upload_max_filesize') . "\n";
+echo "post_max_size: " . ini_get('post_max_size') . "\n";
+echo "memory_limit: " . ini_get('memory_limit') . "\n";
+echo "max_execution_time: " . ini_get('max_execution_time') . "\n";
+echo "max_input_time: " . ini_get('max_input_time') . "\n";
+?>
+EOF
+chown www-data:www-data "$APP_DIR/check_ini.php"
+chmod 644 "$APP_DIR/check_ini.php"
+curl -s "http://localhost/selfhostedgdrive/check_ini.php" || echo "WARNING: Could not verify Apache settings."
+rm -f "$APP_DIR/check_ini.php"
 
 # Fetch the server's public IP address
 echo "Fetching public IP address..."
