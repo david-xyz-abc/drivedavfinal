@@ -1,67 +1,128 @@
 <?php
 session_start();
 
-// Debug log setup
+// Debug log setup with toggle
+define('DEBUG', false); // Set to true for debugging, false in production
 $debug_log = '/var/www/html/selfhostedgdrive/debug.log';
+function log_debug($message) {
+    if (DEBUG) {
+        file_put_contents($debug_log, date('[Y-m-d H:i:s] ') . $message . "\n", FILE_APPEND);
+    }
+}
+
+// Ensure debug log exists and has correct permissions (run once during setup)
 if (!file_exists($debug_log)) {
     file_put_contents($debug_log, "Debug log initialized\n");
     chown($debug_log, 'www-data');
     chmod($debug_log, 0666);
 }
-file_put_contents($debug_log, "=== New Request ===\n", FILE_APPEND);
-file_put_contents($debug_log, "Session ID: " . session_id() . "\n", FILE_APPEND);
-file_put_contents($debug_log, "Loggedin: " . (isset($_SESSION['loggedin']) ? var_export($_SESSION['loggedin'], true) : "Not set") . "\n", FILE_APPEND);
-file_put_contents($debug_log, "Username: " . (isset($_SESSION['username']) ? $_SESSION['username'] : "Not set") . "\n", FILE_APPEND);
-file_put_contents($debug_log, "GET params: " . var_export($_GET, true) . "\n", FILE_APPEND);
 
-// Handle file serving first
+// Log request basics
+log_debug("=== New Request ===");
+log_debug("Session ID: " . session_id());
+log_debug("Loggedin: " . (isset($_SESSION['loggedin']) ? var_export($_SESSION['loggedin'], true) : "Not set"));
+log_debug("Username: " . (isset($_SESSION['username']) ? $_SESSION['username'] : "Not set"));
+log_debug("GET params: " . var_export($_GET, true));
+
+// Optimized file serving with range support
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
     if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
-        file_put_contents($debug_log, "Unauthorized file request, redirecting to index.php\n", FILE_APPEND);
-        header("Location: index.php");
+        log_debug("Unauthorized file request, redirecting to index.php");
+        header("Location: index.php", true, 302);
         exit;
     }
 
-    // Use user-specific base directory
     $username = $_SESSION['username'];
     $baseDir = realpath("/var/www/html/webdav/users/$username/Home");
-    // Strip leading "Home/" from the file path if present
+    if ($baseDir === false) {
+        log_debug("Base directory not found for user: $username");
+        header("HTTP/1.1 500 Internal Server Error");
+        echo "Server configuration error.";
+        exit;
+    }
+
     $requestedFile = urldecode($_GET['file']);
     if (strpos($requestedFile, 'Home/') === 0) {
-        $requestedFile = substr($requestedFile, 5); // Remove "Home/"
+        $requestedFile = substr($requestedFile, 5);
     }
     $filePath = realpath($baseDir . '/' . $requestedFile);
-    file_put_contents($debug_log, "File request: " . $_GET['file'] . "\n", FILE_APPEND);
-    file_put_contents($debug_log, "Adjusted file: " . $requestedFile . "\n", FILE_APPEND);
-    file_put_contents($debug_log, "Resolved file path: " . ($filePath ? $filePath : "Not found") . "\n", FILE_APPEND);
 
-    if ($filePath && strpos($filePath, $baseDir) === 0 && file_exists($filePath)) {
-        $mime = mime_content_type($filePath) ?: 'application/octet-stream';
-        file_put_contents($debug_log, "MIME type: $mime\n", FILE_APPEND);
-        header("Content-Type: $mime");
-        header("Content-Length: " . filesize($filePath));
-        if (!preg_match('/\.(png|jpe?g|gif|heic|mp4|webm|mov|avi|mkv)$/i', $filePath)) {
-            header('Content-Disposition: attachment; filename="' . basename($filePath) . '"');
-        } else {
-            header('Content-Disposition: inline; filename="' . basename($filePath) . '"');
-        }
-        ob_clean();
-        flush();
-        readfile($filePath);
-        file_put_contents($debug_log, "Served file: $filePath\n", FILE_APPEND);
-        exit;
-    } else {
-        file_put_contents($debug_log, "File not found or access denied: $filePath\n", FILE_APPEND);
+    if ($filePath === false || strpos($filePath, $baseDir) !== 0 || !file_exists($filePath)) {
+        log_debug("File not found or access denied: " . ($filePath ?: "Invalid path") . " (Requested: " . $_GET['file'] . ")");
         header("HTTP/1.1 404 Not Found");
         echo "File not found.";
         exit;
     }
+
+    $fileSize = filesize($filePath);
+    $mime = mime_content_type($filePath) ?: 'application/octet-stream';
+    $isMedia = preg_match('/\.(png|jpe?g|gif|heic|mp4|webm|mov|avi|mkv)$/i', $filePath);
+
+    header("Content-Type: $mime");
+    header("Accept-Ranges: bytes");
+    header("Content-Disposition: " . ($isMedia ? "inline" : "attachment") . "; filename=\"" . basename($filePath) . "\"");
+    header("Cache-Control: private, max-age=31536000");
+    header("X-Content-Type-Options: nosniff");
+
+    $fp = fopen($filePath, 'rb');
+    if ($fp === false) {
+        log_debug("Failed to open file: $filePath");
+        header("HTTP/1.1 500 Internal Server Error");
+        echo "Unable to serve file.";
+        exit;
+    }
+
+    if (isset($_SERVER['HTTP_RANGE'])) {
+        $range = $_SERVER['HTTP_RANGE'];
+        if (preg_match('/bytes=(\d+)-(\d*)?/', $range, $matches)) {
+            $start = (int)$matches[1];
+            $end = isset($matches[2]) && $matches[2] !== '' ? (int)$matches[2] : $fileSize - 1;
+
+            if ($start >= $fileSize || $end >= $fileSize || $start > $end) {
+                log_debug("Invalid range request: $range for file size $fileSize");
+                header("HTTP/1.1 416 Range Not Satisfiable");
+                header("Content-Range: bytes */$fileSize");
+                fclose($fp);
+                exit;
+            }
+
+            $length = $end - $start + 1;
+            header("HTTP/1.1 206 Partial Content");
+            header("Content-Length: $length");
+            header("Content-Range: bytes $start-$end/$fileSize");
+
+            fseek($fp, $start);
+            $remaining = $length;
+            while ($remaining > 0 && !feof($fp) && !connection_aborted()) {
+                $chunk = min($remaining, 8192);
+                echo fread($fp, $chunk);
+                flush();
+                $remaining -= $chunk;
+            }
+        } else {
+            log_debug("Malformed range header: $range");
+            header("HTTP/1.1 416 Range Not Satisfiable");
+            header("Content-Range: bytes */$fileSize");
+            fclose($fp);
+            exit;
+        }
+    } else {
+        header("Content-Length: $fileSize");
+        while (!feof($fp) && !connection_aborted()) {
+            echo fread($fp, 8192);
+            flush();
+        }
+    }
+
+    fclose($fp);
+    log_debug("Successfully served file: $filePath");
+    exit;
 }
 
-// Check if user is logged in for page access
+// Check login for page access
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
-    file_put_contents($debug_log, "Redirecting to index.php due to no login\n", FILE_APPEND);
-    header("Location: index.php");
+    log_debug("Redirecting to index.php due to no login");
+    header("Location: index.php", true, 302);
     exit;
 }
 
@@ -71,31 +132,41 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_
 $username = $_SESSION['username'];
 $homeDirPath = "/var/www/html/webdav/users/$username/Home";
 if (!is_dir($homeDirPath)) {
-    mkdir($homeDirPath, 0777, true);
+    if (!mkdir($homeDirPath, 0777, true)) {
+        log_debug("Failed to create home directory: $homeDirPath");
+        header("HTTP/1.1 500 Internal Server Error");
+        echo "Server configuration error.";
+        exit;
+    }
     chown($homeDirPath, 'www-data');
     chgrp($homeDirPath, 'www-data');
 }
 $baseDir = realpath($homeDirPath);
-file_put_contents($debug_log, "BaseDir: $baseDir (User: $username)\n", FILE_APPEND);
+if ($baseDir === false) {
+    log_debug("Base directory resolution failed for: $homeDirPath");
+    header("HTTP/1.1 500 Internal Server Error");
+    echo "Server configuration error.";
+    exit;
+}
+log_debug("BaseDir: $baseDir (User: $username)");
 
-// Redirect to Home folder by default if no folder specified
+// Redirect to Home if no folder specified
 if (!isset($_GET['folder'])) {
-    file_put_contents($debug_log, "No folder specified, redirecting to Home\n", FILE_APPEND);
-    header("Location: explorer.php?folder=Home");
+    log_debug("No folder specified, redirecting to Home");
+    header("Location: explorer.php?folder=Home", true, 302);
     exit;
 }
 
 /************************************************
- * 2. Determine current folder (GET param)
+ * 2. Determine current folder
  ************************************************/
-$currentRel = isset($_GET['folder']) ? $_GET['folder'] : 'Home';
-$currentRel = trim(str_replace('..', '', $currentRel), '/');
+$currentRel = isset($_GET['folder']) ? trim(str_replace('..', '', $_GET['folder']), '/') : 'Home';
 $currentDir = realpath($baseDir . '/' . $currentRel);
-file_put_contents($debug_log, "CurrentRel: $currentRel\n", FILE_APPEND);
-file_put_contents($debug_log, "CurrentDir: " . ($currentDir ? $currentDir : "Not resolved") . "\n", FILE_APPEND);
+log_debug("CurrentRel: $currentRel");
+log_debug("CurrentDir: " . ($currentDir ? $currentDir : "Not resolved"));
 
 if ($currentDir === false || strpos($currentDir, $baseDir) !== 0) {
-    file_put_contents($debug_log, "Invalid folder, resetting to Home\n", FILE_APPEND);
+    log_debug("Invalid folder, resetting to Home");
     $currentDir = $baseDir;
     $currentRel = 'Home';
 }
@@ -108,13 +179,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_folder'])) {
     if ($folderName !== '') {
         $targetPath = $currentDir . '/' . $folderName;
         if (!file_exists($targetPath)) {
-            mkdir($targetPath, 0777);
-            chown($targetPath, 'www-data');
-            chgrp($targetPath, 'www-data');
-            file_put_contents($debug_log, "Created folder: $targetPath\n", FILE_APPEND);
+            if (!mkdir($targetPath, 0777)) {
+                log_debug("Failed to create folder: $targetPath");
+                $_SESSION['error'] = "Failed to create folder.";
+            } else {
+                chown($targetPath, 'www-data');
+                chgrp($targetPath, 'www-data');
+                log_debug("Created folder: $targetPath");
+            }
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel));
+    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -126,16 +201,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
         if ($_FILES['upload_files']['error'][$i] === UPLOAD_ERR_OK) {
             $tmpPath = $_FILES['upload_files']['tmp_name'][$i];
             $dest = $currentDir . '/' . basename($fname);
-            move_uploaded_file($tmpPath, $dest);
-            chown($dest, 'www-data');
-            chgrp($dest, 'www-data');
-            chmod($dest, 0664);
-            file_put_contents($debug_log, "Uploaded file: $dest\n", FILE_APPEND);
+            if (move_uploaded_file($tmpPath, $dest)) {
+                chown($dest, 'www-data');
+                chgrp($dest, 'www-data');
+                chmod($dest, 0664);
+                log_debug("Uploaded file: $dest");
+            } else {
+                log_debug("Failed to move uploaded file to: $dest");
+            }
         } else {
-            file_put_contents($debug_log, "Upload error for $fname: " . $_FILES['upload_files']['error'][$i] . "\n", FILE_APPEND);
+            log_debug("Upload error for $fname: " . $_FILES['upload_files']['error'][$i]);
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel));
+    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -149,13 +227,14 @@ if (isset($_GET['delete']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($targetPath && strpos($targetPath, $currentDir) === 0) {
         if (is_dir($targetPath)) {
             deleteRecursive($targetPath);
-            file_put_contents($debug_log, "Deleted folder: $targetPath\n", FILE_APPEND);
+            log_debug("Deleted folder: $targetPath");
+        } elseif (unlink($targetPath)) {
+            log_debug("Deleted file: $targetPath");
         } else {
-            unlink($targetPath);
-            file_put_contents($debug_log, "Deleted file: $targetPath\n", FILE_APPEND);
+            log_debug("Failed to delete item: $targetPath");
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel));
+    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -186,12 +265,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename_folder'])) {
 
     if ($oldPath && is_dir($oldPath)) {
         $newPath = $currentDir . '/' . $newFolderName;
-        if (!file_exists($newPath)) {
-            rename($oldPath, $newPath);
-            file_put_contents($debug_log, "Renamed folder: $oldPath to $newPath\n", FILE_APPEND);
+        if (!file_exists($newPath) && rename($oldPath, $newPath)) {
+            log_debug("Renamed folder: $oldPath to $newPath");
+        } else {
+            log_debug("Failed to rename folder: $oldPath to $newPath");
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel));
+    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -208,16 +288,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename_file'])) {
         $newExt = strtolower(pathinfo($newFileName, PATHINFO_EXTENSION));
         if ($oldExt !== $newExt) {
             $_SESSION['error'] = "Modification of file extension is not allowed.";
-            header("Location: explorer.php?folder=" . urlencode($currentRel));
-            exit;
-        }
-        $newFilePath = $currentDir . '/' . $newFileName;
-        if (!file_exists($newFilePath)) {
-            rename($oldFilePath, $newFilePath);
-            file_put_contents($debug_log, "Renamed file: $oldFilePath to $newFilePath\n", FILE_APPEND);
+        } else {
+            $newFilePath = $currentDir . '/' . $newFileName;
+            if (!file_exists($newFilePath) && rename($oldFilePath, $newFilePath)) {
+                log_debug("Renamed file: $oldFilePath to $newFilePath");
+            } else {
+                log_debug("Failed to rename file: $oldFilePath to $newFilePath");
+            }
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel));
+    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -228,20 +308,22 @@ $folders = [];
 $files = [];
 if (is_dir($currentDir)) {
     $all = scandir($currentDir);
-    foreach ($all as $one) {
-        if ($one === '.' || $one === '..') continue;
-        $path = $currentDir . '/' . $one;
-        if (is_dir($path)) {
-            $folders[] = $one;
-        } else {
-            $files[] = $one;
+    if ($all !== false) {
+        foreach ($all as $one) {
+            if ($one === '.' || $one === '..') continue;
+            $path = $currentDir . '/' . $one;
+            if (is_dir($path)) {
+                $folders[] = $one;
+            } else {
+                $files[] = $one;
+            }
         }
     }
 }
 sort($folders);
 sort($files);
-file_put_contents($debug_log, "Folders: " . implode(", ", $folders) . "\n", FILE_APPEND);
-file_put_contents($debug_log, "Files: " . implode(", ", $files) . "\n", FILE_APPEND);
+log_debug("Folders: " . implode(", ", $folders));
+log_debug("Files: " . implode(", ", $files));
 
 /************************************************
  * 10. "Back" link if not at Home
@@ -259,23 +341,15 @@ if ($currentDir !== $baseDir) {
  ************************************************/
 function getIconClass($fileName) {
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    if (in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'heic'])) {
-        return 'fas fa-file-image';
-    }
-    if (in_array($ext, ['mp4', 'webm', 'mov', 'avi', 'mkv'])) {
-        return 'fas fa-file-video';
-    }
-    if ($ext === 'pdf') {
-        return 'fas fa-file-pdf';
-    }
-    if ($ext === 'exe') {
-        return 'fas fa-file-exclamation';
-    }
+    if (in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'heic'])) return 'fas fa-file-image';
+    if (in_array($ext, ['mp4', 'webm', 'mov', 'avi', 'mkv'])) return 'fas fa-file-video';
+    if ($ext === 'pdf') return 'fas fa-file-pdf';
+    if ($ext === 'exe') return 'fas fa-file-exclamation';
     return 'fas fa-file';
 }
 
 /************************************************
- * 12. Helper: Check if file is "previewable" (image/video)
+ * 12. Helper: Check if file is "previewable"
  ************************************************/
 function isImage($fileName) {
     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
@@ -305,8 +379,8 @@ function isVideo($fileName) {
     --border-color: #333;
     --button-bg: linear-gradient(135deg, #555, #777);
     --button-hover: linear-gradient(135deg, #777, #555);
-    --accent-red: #d32f2f; /* Darker red for dark mode */
-    --dropzone-bg: rgba(211, 47, 47, 0.1); /* Light red tint for drop zone */
+    --accent-red: #d32f2f;
+    --dropzone-bg: rgba(211, 47, 47, 0.1);
     --dropzone-border: #d32f2f;
   }
   body.light-mode {
@@ -317,7 +391,7 @@ function isVideo($fileName) {
     --border-color: #ccc;
     --button-bg: linear-gradient(135deg, #888, #aaa);
     --button-hover: linear-gradient(135deg, #aaa, #888);
-    --accent-red: #f44336; /* Normal red for light mode */
+    --accent-red: #f44336;
     --dropzone-bg: rgba(244, 67, 54, 0.1);
     --dropzone-border: #f44336;
   }
@@ -352,20 +426,11 @@ function isVideo($fileName) {
     transition: transform 0.3s ease;
   }
   @media (min-width: 1024px) {
-    .sidebar {
-      transform: none;
-    }
+    .sidebar { transform: none; }
   }
-  .sidebar.open {
-    transform: translateX(0);
-  }
+  .sidebar.open { transform: translateX(0); }
   @media (max-width: 1023px) {
-    .sidebar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      height: 100%;
-    }
+    .sidebar { position: fixed; top: 0; left: 0; height: 100%; }
   }
   .sidebar-overlay {
     display: none;
@@ -377,14 +442,8 @@ function isVideo($fileName) {
     background: rgba(0,0,0,0.5);
     z-index: 9997;
   }
-  .sidebar-overlay.show {
-    display: block;
-  }
-  @media (min-width: 1024px) {
-    .sidebar-overlay {
-      display: none !important;
-    }
-  }
+  .sidebar-overlay.show { display: block; }
+  @media (min-width: 1024px) { .sidebar-overlay { display: none !important; } }
   .folders-container {
     padding: 20px;
     overflow-y: auto;
@@ -422,13 +481,8 @@ function isVideo($fileName) {
     background: var(--button-hover);
     transform: scale(1.05);
   }
-  .btn:active {
-    transform: scale(0.95);
-  }
-  .btn i {
-    color: var(--text-color);
-    margin: 0;
-  }
+  .btn:active { transform: scale(0.95); }
+  .btn i { color: var(--text-color); margin: 0; }
   .btn-back {
     background: var(--button-bg);
     color: var(--text-color);
@@ -442,17 +496,12 @@ function isVideo($fileName) {
     transition: background 0.3s, transform 0.2s;
     text-decoration: none;
   }
-  .btn-back i {
-    color: var(--text-color);
-    margin: 0;
-  }
+  .btn-back i { color: var(--text-color); margin: 0; }
   .btn-back:hover {
     background: var(--button-hover);
     transform: scale(1.05);
   }
-  .btn-back:active {
-    transform: scale(0.95);
-  }
+  .btn-back:active { transform: scale(0.95); }
   .logout-btn {
     background: linear-gradient(135deg, var(--accent-red), #b71c1c) !important;
   }
@@ -472,23 +521,19 @@ function isVideo($fileName) {
     cursor: pointer;
     transition: background 0.3s;
   }
-  .folder-item:hover {
-    background: var(--border-color);
-  }
+  .folder-item:hover { background: var(--border-color); }
   .folder-item.selected {
     background: var(--accent-red);
     color: #fff;
     transform: translateX(5px);
   }
-  .folder-item i {
-    margin-right: 6px;
-  }
+  .folder-item i { margin-right: 6px; }
   .main-content {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    position: relative; /* For drop zone positioning */
+    position: relative;
   }
   .header-area {
     flex-shrink: 0;
@@ -498,7 +543,7 @@ function isVideo($fileName) {
     padding: 20px;
     border-bottom: 1px solid var(--border-color);
     background: var(--background);
-    z-index: 10; /* Above drop zone */
+    z-index: 10;
   }
   .header-title {
     display: flex;
@@ -518,16 +563,12 @@ function isVideo($fileName) {
     font-size: 24px;
     cursor: pointer;
   }
-  @media (min-width: 1024px) {
-    .hamburger {
-      display: none;
-    }
-  }
+  @media (min-width: 1024px) { .hamburger { display: none; } }
   .content-inner {
     flex: 1;
     overflow-y: auto;
     padding: 20px;
-    position: relative; /* For drop zone */
+    position: relative;
   }
   .file-list {
     display: flex;
@@ -561,9 +602,7 @@ function isVideo($fileName) {
     margin-right: 20px;
     cursor: pointer;
   }
-  .file-name:hover {
-    border-bottom: 1px solid var(--accent-red);
-  }
+  .file-name:hover { border-bottom: 1px solid var(--accent-red); }
   .file-actions {
     display: flex;
     align-items: center;
@@ -587,16 +626,9 @@ function isVideo($fileName) {
     background: var(--button-hover);
     transform: scale(1.05);
   }
-  .file-actions button:active {
-    transform: scale(0.95);
-  }
-  .file-actions button i {
-    color: var(--text-color);
-    margin: 0;
-  }
-  #fileInput {
-    display: none;
-  }
+  .file-actions button:active { transform: scale(0.95); }
+  .file-actions button i { color: var(--text-color); margin: 0; }
+  #fileInput { display: none; }
   #uploadProgressContainer {
     display: none;
     position: fixed;
@@ -691,9 +723,7 @@ function isVideo($fileName) {
     align-items: center;
     z-index: 10000;
   }
-  #dialogModal.show {
-    display: flex;
-  }
+  #dialogModal.show { display: flex; }
   .dialog-content {
     background: var(--content-bg);
     border: 1px solid var(--border-color);
@@ -725,13 +755,8 @@ function isVideo($fileName) {
     background: var(--button-hover);
     transform: scale(1.05);
   }
-  .dialog-button:active {
-    transform: scale(0.95);
-  }
-  .theme-toggle-btn i {
-    color: var(--text-color);
-  }
-  /* Drag and Drop Styles */
+  .dialog-button:active { transform: scale(0.95); }
+  .theme-toggle-btn i { color: var(--text-color); }
   #dropZone {
     display: none;
     position: absolute;
@@ -751,10 +776,8 @@ function isVideo($fileName) {
     padding: 20px;
     box-sizing: border-box;
   }
-  #dropZone.active {
-    display: flex;
-  }
-</style>
+  #dropZone.active { display: flex; }
+  </style>
 </head>
 <body>
   <div class="app-container">
@@ -763,7 +786,7 @@ function isVideo($fileName) {
         <div class="top-row">
           <h2>Folders</h2>
           <?php if ($parentLink): ?>
-            <a class="btn-back" href="<?php echo $parentLink; ?>" title="Back">
+            <a class="btn-back" href="<?php echo htmlspecialchars($parentLink); ?>" title="Back">
               <i class="fas fa-arrow-left"></i>
             </a>
           <?php endif; ?>
@@ -782,10 +805,8 @@ function isVideo($fileName) {
         </div>
         <ul class="folder-list">
           <?php foreach ($folders as $folderName): ?>
-            <?php 
-            $folderPath = ($currentRel === 'Home' ? '' : $currentRel . '/') . $folderName; 
-            file_put_contents($debug_log, "Folder path for $folderName: $folderPath\n", FILE_APPEND);
-            ?>
+            <?php $folderPath = ($currentRel === 'Home' ? '' : $currentRel . '/') . $folderName; 
+                  log_debug("Folder path for $folderName: $folderPath"); ?>
             <li class="folder-item"
                 ondblclick="openFolder('<?php echo urlencode($folderPath); ?>')"
                 onclick="selectFolder(this, '<?php echo addslashes($folderName); ?>'); event.stopPropagation();">
@@ -828,13 +849,11 @@ function isVideo($fileName) {
         <div id="dropZone">Drop files here to upload</div>
         <div class="file-list">
           <?php foreach ($files as $fileName): ?>
-            <?php
-              $relativePath = $currentRel . '/' . $fileName;
-              $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
-              $iconClass = getIconClass($fileName);
-              $canPreview = (isImage($fileName) || isVideo($fileName));
-              file_put_contents($debug_log, "File URL for $fileName: $fileURL\n", FILE_APPEND);
-            ?>
+            <?php $relativePath = $currentRel . '/' . $fileName;
+                  $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
+                  $iconClass = getIconClass($fileName);
+                  $canPreview = (isImage($fileName) || isVideo($fileName));
+                  log_debug("File URL for $fileName: $fileURL"); ?>
             <div class="file-row">
               <i class="<?php echo $iconClass; ?> file-icon"></i>
               <div class="file-name"
@@ -902,15 +921,12 @@ function isVideo($fileName) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
-
     dialogMessage.innerHTML = '';
     dialogButtons.innerHTML = '';
-
     const msgEl = document.createElement('div');
     msgEl.textContent = message;
     msgEl.style.marginBottom = '10px';
     dialogMessage.appendChild(msgEl);
-
     const inputField = document.createElement('input');
     inputField.type = 'text';
     inputField.value = defaultValue || '';
@@ -922,75 +938,48 @@ function isVideo($fileName) {
     inputField.style.color = '#fff';
     inputField.style.marginBottom = '15px';
     dialogMessage.appendChild(inputField);
-
     const okBtn = document.createElement('button');
     okBtn.className = 'dialog-button';
     okBtn.textContent = 'OK';
-    okBtn.onclick = () => {
-      closeDialog();
-      if (callback) callback(inputField.value);
-    };
+    okBtn.onclick = () => { closeDialog(); if (callback) callback(inputField.value); };
     dialogButtons.appendChild(okBtn);
-
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'dialog-button';
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.onclick = () => {
-      closeDialog();
-      if (callback) callback(null);
-    };
+    cancelBtn.onclick = () => { closeDialog(); if (callback) callback(null); };
     dialogButtons.appendChild(cancelBtn);
-
     dialogModal.classList.add('show');
   }
-  function closeDialog() {
-    document.getElementById('dialogModal').classList.remove('show');
-  }
+  function closeDialog() { document.getElementById('dialogModal').classList.remove('show'); }
   function showAlert(message, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
-
     dialogMessage.textContent = message;
     dialogButtons.innerHTML = '';
-
     const okBtn = document.createElement('button');
     okBtn.className = 'dialog-button';
     okBtn.textContent = 'OK';
-    okBtn.onclick = () => {
-      closeDialog();
-      if (callback) callback();
-    };
+    okBtn.onclick = () => { closeDialog(); if (callback) callback(); };
     dialogButtons.appendChild(okBtn);
-
     dialogModal.classList.add('show');
   }
   function showConfirm(message, onYes, onNo) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
-
     dialogMessage.textContent = message;
     dialogButtons.innerHTML = '';
-
     const yesBtn = document.createElement('button');
     yesBtn.className = 'dialog-button';
     yesBtn.textContent = 'Yes';
-    yesBtn.onclick = () => {
-      closeDialog();
-      if (onYes) onYes();
-    };
+    yesBtn.onclick = () => { closeDialog(); if (onYes) onYes(); };
     dialogButtons.appendChild(yesBtn);
-
     const noBtn = document.createElement('button');
     noBtn.className = 'dialog-button';
     noBtn.textContent = 'No';
-    noBtn.onclick = () => {
-      closeDialog();
-      if (onNo) onNo();
-    };
+    noBtn.onclick = () => { closeDialog(); if (onNo) onNo(); };
     dialogButtons.appendChild(noBtn);
-
     dialogModal.classList.add('show');
   }
 
@@ -1059,7 +1048,7 @@ function isVideo($fileName) {
     let dotIndex = fileName.lastIndexOf(".");
     let baseName = fileName;
     let ext = "";
-    if(dotIndex > 0) {
+    if (dotIndex > 0) {
       baseName = fileName.substring(0, dotIndex);
       ext = fileName.substring(dotIndex);
     }
@@ -1102,7 +1091,7 @@ function isVideo($fileName) {
 
   function downloadFile(fileURL) {
     console.log("Downloading: " + fileURL);
-    fetch(fileURL)
+    fetch(fileURL, { headers: { 'Range': 'bytes=0-' } })
       .then(response => {
         if (!response.ok) throw new Error('Download failed: ' + response.status);
         return response.blob();
@@ -1111,9 +1100,10 @@ function isVideo($fileName) {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = fileURL.split('/').pop().split('&')[0]; // Extract filename from URL
+        a.download = fileURL.split('/').pop().split('&')[0];
         document.body.appendChild(a);
         a.click();
+        window.URL.revokeObjectURL(url);
         a.remove();
       })
       .catch(error => showAlert('Download error: ' + error.message));
@@ -1129,15 +1119,11 @@ function isVideo($fileName) {
   const dropZone = document.getElementById('dropZone');
   const mainContent = document.querySelector('.main-content');
 
-  uploadBtn.addEventListener('click', () => {
-    fileInput.click();
-  });
+  uploadBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
-    if (!fileInput.files.length) return;
-    startUpload(fileInput.files);
+    if (fileInput.files.length) startUpload(fileInput.files);
   });
 
-  // Drag and Drop Event Listeners
   mainContent.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropZone.classList.add('active');
@@ -1150,17 +1136,13 @@ function isVideo($fileName) {
     e.preventDefault();
     dropZone.classList.remove('active');
     const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      startUpload(files);
-    }
+    if (files.length > 0) startUpload(files);
   });
 
   function startUpload(fileList) {
     const formData = new FormData(uploadForm);
     formData.delete("upload_files[]");
-    for (let i = 0; i < fileList.length; i++) {
-      formData.append("upload_files[]", fileList[i]);
-    }
+    for (let i = 0; i < fileList.length; i++) formData.append("upload_files[]", fileList[i]);
     uploadProgressContainer.style.display = 'block';
     uploadProgressBar.style.width = '0%';
     uploadProgressPercent.textContent = '0%';
@@ -1174,16 +1156,11 @@ function isVideo($fileName) {
         uploadProgressPercent.textContent = percent + '%';
       }
     };
-    xhr.onload = function() {
-      if (xhr.status === 200) {
-        location.reload();
-      } else {
-        showAlert('Upload failed. Status: ' + xhr.status);
-      }
+    xhr.onload = () => {
+      if (xhr.status === 200) location.reload();
+      else showAlert('Upload failed. Status: ' + xhr.status);
     };
-    xhr.onerror = function() {
-      showAlert('Upload failed. Could not connect to server.');
-    };
+    xhr.onerror = () => showAlert('Upload failed. Could not connect to server.');
     xhr.send(formData);
   }
   cancelUploadBtn.addEventListener('click', () => {
@@ -1232,11 +1209,8 @@ function isVideo($fileName) {
   }
   window.closePreviewModal = closePreviewModal;
 
-  // Theme toggle functionality
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   const body = document.body;
-
-  // Load saved theme from localStorage
   const savedTheme = localStorage.getItem('theme') || 'dark';
   if (savedTheme === 'light') {
     body.classList.add('light-mode');
@@ -1245,7 +1219,6 @@ function isVideo($fileName) {
     body.classList.remove('light-mode');
     themeToggleBtn.querySelector('i').classList.replace('fa-sun', 'fa-moon');
   }
-
   themeToggleBtn.addEventListener('click', () => {
     body.classList.toggle('light-mode');
     const isLightMode = body.classList.contains('light-mode');
@@ -1253,6 +1226,6 @@ function isVideo($fileName) {
     themeToggleBtn.querySelector('i').classList.toggle('fa-sun', isLightMode);
     localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
   });
-</script>
+  </script>
 </body>
 </html>
