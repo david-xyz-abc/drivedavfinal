@@ -16,14 +16,11 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-BASE_URL="https://raw.githubusercontent.com/david-xyz-abc/drivedavfinal/main"
-FILES=("index.php" "authenticate.php" "explorer.php" "logout.php" "register.php")
-
 echo "Updating package lists..."
 apt-get update -y || { echo "ERROR: Failed to update package lists"; exit 1; }
 
 echo "Installing dependencies..."
-apt-get install -y apache2 php libapache2-mod-php php-cli php-json php-mbstring php-xml php-fileinfo wget curl || {
+apt-get install -y apache2 php libapache2-mod-php php-cli php-json php-mbstring php-xml php-fileinfo || {
   echo "ERROR: Failed to install dependencies"; exit 1;
 }
 
@@ -35,13 +32,17 @@ DEBUG_LOG="$APP_DIR/debug.log"
 echo "Creating directories..."
 mkdir -p "$APP_DIR" "$WEBDAV_USERS_DIR" || { echo "ERROR: Failed to create directories"; exit 1; }
 
-echo "Downloading PHP files..."
+echo "Copying PHP files (assuming local files are present)..."
+FILES=("index.php" "authenticate.php" "explorer.php" "logout.php" "register.php")
 for file in "${FILES[@]}"; do
-  echo "Fetching ${file}..."
-  wget -q -O "$APP_DIR/$file" "${BASE_URL}/${file}"
-  if [ ! -s "$APP_DIR/$file" ]; then  # Check if file is empty or missing
-    echo "ERROR: Failed to download ${file} or file is empty"
-    exit 1
+  if [ -f "$file" ]; then
+    cp "$file" "$APP_DIR/$file" || { echo "ERROR: Failed to copy $file"; exit 1; }
+  else
+    if [ "$file" = "logout.php" ]; then
+      echo '<?php session_start(); session_unset(); session_destroy(); header("Location: /selfhostedgdrive/index.php"); exit; ?>' > "$APP_DIR/$file"
+    else
+      echo "ERROR: $file not found locally"; exit 1
+    fi
   fi
   chown www-data:www-data "$APP_DIR/$file"
   chmod 644 "$APP_DIR/$file"
@@ -105,35 +106,38 @@ echo "Configuring Apache..."
 cat << EOF > /etc/apache2/sites-available/selfhostedgdrive.conf
 <VirtualHost *:80>
     ServerAdmin webmaster@localhost
-    DocumentRoot $APP_DIR
+    DocumentRoot /var/www/html/selfhostedgdrive
     ErrorLog /var/log/apache2/selfhostedgdrive_error.log
     CustomLog /var/log/apache2/selfhostedgdrive_access.log combined
-    <Directory $APP_DIR>
+    <Directory /var/www/html/selfhostedgdrive>
         Options -Indexes +FollowSymLinks
         AllowOverride All
         Require all granted
-        DirectoryIndex index.php  # Changed to index.php
+        DirectoryIndex index.php
     </Directory>
 </VirtualHost>
 EOF
 a2enmod rewrite || { echo "ERROR: Failed to enable rewrite module"; exit 1; }
+a2enmod php"$PHP_VERSION" || { echo "ERROR: Failed to enable PHP module"; exit 1; }
 a2dissite 000-default.conf 2>/dev/null || true
 a2ensite selfhostedgdrive.conf || { echo "ERROR: Failed to enable site"; exit 1; }
 
 echo "Restarting Apache..."
 systemctl restart apache2 || { echo "ERROR: Failed to restart Apache"; exit 1; }
+systemctl is-active apache2 >/dev/null || { echo "ERROR: Apache is not running"; exit 1; }
 
 echo "Verifying installation..."
 curl -s -I "http://localhost/selfhostedgdrive/index.php" | grep -q "200 OK" || {
-  echo "ERROR: Failed to access index.php. Check logs:"
+  echo "ERROR: Failed to access index.php locally. Check Apache status and logs:"
+  systemctl status apache2
   cat /var/log/apache2/selfhostedgdrive_error.log
+  cat /var/log/apache2/error.log
   exit 1
 }
 
-PUBLIC_IP=$(curl -s --retry 3 http://ifconfig.me || curl -s --retry 3 http://api.ipify.org || echo "Unable to fetch IP")
-if [ "$PUBLIC_IP" = "Unable to fetch IP" ]; then
-  echo "WARNING: Could not fetch public IP."
-  PUBLIC_IP="your_server_ip_here"  # Replace with your actual server IP during testing
+PUBLIC_IP=$(curl -s --retry 3 http://ifconfig.me || curl -s --retry 3 http://api.ipify.org || echo "your_server_ip_here")
+if [ "$PUBLIC_IP" = "your_server_ip_here" ]; then
+  echo "WARNING: Could not fetch public IP. Replace 'your_server_ip_here' with your server's IP."
 fi
 
 echo "======================================"
