@@ -47,6 +47,9 @@ for file in "${FILES[@]}"; do
   chmod 644 "$APP_DIR/$file"
 done
 
+echo "Listing downloaded files..."
+ls -l "$APP_DIR"
+
 echo "Setting up users.json..."
 [ -f "$USERS_JSON" ] || echo "{}" > "$USERS_JSON" || { echo "ERROR: Failed to create $USERS_JSON"; exit 1; }
 chown www-data:www-data "$USERS_JSON"
@@ -67,6 +70,8 @@ PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;' 2>/dev/
 }
 CLI_PHP_INI="/etc/php/$PHP_VERSION/cli/php.ini"
 APACHE_PHP_INI="/etc/php/$PHP_VERSION/apache2/php.ini"
+
+echo "PHP Version: $PHP_VERSION"
 
 [ -f "$CLI_PHP_INI" ] || { echo "ERROR: CLI php.ini not found at $CLI_PHP_INI"; exit 1; }
 [ -f "$APACHE_PHP_INI" ] || {
@@ -116,23 +121,43 @@ cat << EOF > /etc/apache2/sites-available/selfhostedgdrive.conf
     </Directory>
 </VirtualHost>
 EOF
-echo "Forcing Apache site configuration..."
+echo "Enabling modules and site..."
 a2enmod rewrite || { echo "ERROR: Failed to enable rewrite module"; exit 1; }
 a2enmod php"$PHP_VERSION" || { echo "ERROR: Failed to enable PHP module"; exit 1; }
 a2dissite 000-default.conf 2>/dev/null || true
 a2ensite selfhostedgdrive.conf || { echo "ERROR: Failed to enable site"; exit 1; }
 apachectl configtest || { echo "ERROR: Apache config test failed"; exit 1; }
 
+echo "Active sites:"
+ls -l /etc/apache2/sites-enabled/
+
 echo "Restarting Apache..."
 systemctl restart apache2 || { echo "ERROR: Failed to restart Apache"; exit 1; }
 systemctl is-active apache2 >/dev/null || { echo "ERROR: Apache is not running"; exit 1; }
 
-echo "Verifying installation..."
-echo "Testing http://localhost/selfhostedgdrive/index.php..."
+echo "Checking Apache listening..."
+netstat -tuln | grep :80 || echo "WARNING: Apache not listening on port 80"
+
+echo "Verifying PHP processing..."
+echo '<?php phpinfo(); ?>' > "$APP_DIR/test.php"
+chown www-data:www-data "$APP_DIR/test.php"
+chmod 644 "$APP_DIR/test.php"
+echo "Testing http://localhost/selfhostedgdrive/test.php..."
+curl -s "http://localhost/selfhostedgdrive/test.php" > /tmp/test_php_output
+if grep -q "phpinfo" /tmp/test_php_output; then
+  echo "PHP is working!"
+else
+  echo "ERROR: PHP not processing. Check output:"
+  cat /tmp/test_php_output
+  exit 1
+fi
+
+echo "Verifying index.php..."
+echo "curl -I http://localhost/selfhostedgdrive/index.php output:"
 curl -s -I "http://localhost/selfhostedgdrive/index.php" > /tmp/curl_output
 cat /tmp/curl_output
 if ! grep -q "200 OK" /tmp/curl_output; then
-  echo "ERROR: Failed to access index.php locally. Check details below:"
+  echo "ERROR: Failed to access index.php locally. Details:"
   echo "Apache status:"
   systemctl status apache2
   echo "Apache error log (/var/log/apache2/selfhostedgdrive_error.log):"
