@@ -55,12 +55,30 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     }
 
     $fileSize = filesize($filePath);
-    $mime = mime_content_type($filePath) ?: 'application/octet-stream';
-    $isMedia = preg_match('/\.(png|jpe?g|gif|heic|mp4|webm|mov|avi|mkv)$/i', $filePath);
+    $fileName = basename($filePath);
 
+    // Define MIME types with fallback
+    $mime_types = [
+        'pdf' => 'application/pdf',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'heic' => 'image/heic',
+        'mp4' => 'video/mp4',
+        'webm' => 'video/webm',
+        'mov' => 'video/quicktime',
+        'avi' => 'video/x-msvideo',
+        'mkv' => 'video/x-matroska',
+    ];
+    $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+    $mime = $mime_types[$ext] ?? mime_content_type($filePath) ?? 'application/octet-stream';
+
+    // Force download for all files
     header("Content-Type: $mime");
     header("Accept-Ranges: bytes");
-    header("Content-Disposition: " . ($isMedia ? "inline" : "attachment") . "; filename=\"" . basename($filePath) . "\"");
+    header("Content-Disposition: attachment; filename=\"$fileName\"");
+    header("Content-Length: $fileSize");
     header("Cache-Control: private, max-age=31536000");
     header("X-Content-Type-Options: nosniff");
 
@@ -72,6 +90,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
         exit;
     }
 
+    ob_clean(); // Clear any output buffer to prevent corruption
+
+    // Handle range requests
     if (isset($_SERVER['HTTP_RANGE'])) {
         $range = $_SERVER['HTTP_RANGE'];
         if (preg_match('/bytes=(\d+)-(\d*)?/', $range, $matches)) {
@@ -107,7 +128,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
             exit;
         }
     } else {
-        header("Content-Length: $fileSize");
+        // Full file download
         while (!feof($fp) && !connection_aborted()) {
             echo fread($fp, 8192);
             flush();
@@ -1091,22 +1112,12 @@ function isVideo($fileName) {
 
   function downloadFile(fileURL) {
     console.log("Downloading: " + fileURL);
-    fetch(fileURL, { headers: { 'Range': 'bytes=0-' } })
-      .then(response => {
-        if (!response.ok) throw new Error('Download failed: ' + response.status);
-        return response.blob();
-      })
-      .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileURL.split('/').pop().split('&')[0];
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
-      })
-      .catch(error => showAlert('Download error: ' + error.message));
+    const a = document.createElement('a');
+    a.href = fileURL;
+    a.download = ''; // Rely on server-side Content-Disposition
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   const uploadForm = document.getElementById('uploadForm');
