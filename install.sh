@@ -38,10 +38,13 @@ mkdir -p "$APP_DIR" "$WEBDAV_USERS_DIR" || { echo "ERROR: Failed to create direc
 echo "Downloading PHP files..."
 for file in "${FILES[@]}"; do
   echo "Fetching ${file}..."
-  wget -q -O "$APP_DIR/$file" "${BASE_URL}/${file}" || { echo "ERROR: Failed to download ${file}"; exit 1; }
+  wget -q -O "$APP_DIR/$file" "${BASE_URL}/${file}"
+  if [ ! -s "$APP_DIR/$file" ]; then  # Check if file is empty or missing
+    echo "ERROR: Failed to download ${file} or file is empty"
+    exit 1
+  fi
   chown www-data:www-data "$APP_DIR/$file"
   chmod 644 "$APP_DIR/$file"
-  [ -f "$APP_DIR/$file" ] || { echo "ERROR: $file not found after download"; exit 1; }
 done
 
 echo "Setting up users.json..."
@@ -109,7 +112,7 @@ cat << EOF > /etc/apache2/sites-available/selfhostedgdrive.conf
         Options -Indexes +FollowSymLinks
         AllowOverride All
         Require all granted
-        DirectoryIndex explorer.php
+        DirectoryIndex index.php  # Changed to index.php
     </Directory>
 </VirtualHost>
 EOF
@@ -121,8 +124,8 @@ echo "Restarting Apache..."
 systemctl restart apache2 || { echo "ERROR: Failed to restart Apache"; exit 1; }
 
 echo "Verifying installation..."
-curl -s -I "http://localhost/selfhostedgdrive/explorer.php" || {
-  echo "ERROR: Failed to access explorer.php. Check logs:"
+curl -s -I "http://localhost/selfhostedgdrive/index.php" | grep -q "200 OK" || {
+  echo "ERROR: Failed to access index.php. Check logs:"
   cat /var/log/apache2/selfhostedgdrive_error.log
   exit 1
 }
@@ -130,7 +133,7 @@ curl -s -I "http://localhost/selfhostedgdrive/explorer.php" || {
 PUBLIC_IP=$(curl -s --retry 3 http://ifconfig.me || curl -s --retry 3 http://api.ipify.org || echo "Unable to fetch IP")
 if [ "$PUBLIC_IP" = "Unable to fetch IP" ]; then
   echo "WARNING: Could not fetch public IP."
-  PUBLIC_IP="34.93.51.40"  # Use your known IP
+  PUBLIC_IP="your_server_ip_here"  # Replace with your actual server IP during testing
 fi
 
 echo "======================================"
