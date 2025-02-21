@@ -16,11 +16,14 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+BASE_URL="https://raw.githubusercontent.com/david-xyz-abc/drivedavfinal/main"
+FILES=("index.php" "authenticate.php" "explorer.php" "logout.php" "register.php")
+
 echo "Updating package lists..."
 apt-get update -y || { echo "ERROR: Failed to update package lists"; exit 1; }
 
 echo "Installing dependencies..."
-apt-get install -y apache2 php libapache2-mod-php php-cli php-json php-mbstring php-xml php-fileinfo || {
+apt-get install -y apache2 php libapache2-mod-php php-cli php-json php-mbstring php-xml php-fileinfo wget || {
   echo "ERROR: Failed to install dependencies"; exit 1;
 }
 
@@ -32,17 +35,13 @@ DEBUG_LOG="$APP_DIR/debug.log"
 echo "Creating directories..."
 mkdir -p "$APP_DIR" "$WEBDAV_USERS_DIR" || { echo "ERROR: Failed to create directories"; exit 1; }
 
-echo "Copying PHP files (assuming local files are present)..."
-FILES=("index.php" "authenticate.php" "explorer.php" "logout.php" "register.php")
+echo "Downloading PHP files from GitHub..."
 for file in "${FILES[@]}"; do
-  if [ -f "$file" ]; then
-    cp "$file" "$APP_DIR/$file" || { echo "ERROR: Failed to copy $file"; exit 1; }
-  else
-    if [ "$file" = "logout.php" ]; then
-      echo '<?php session_start(); session_unset(); session_destroy(); header("Location: /selfhostedgdrive/index.php"); exit; ?>' > "$APP_DIR/$file"
-    else
-      echo "ERROR: $file not found locally"; exit 1
-    fi
+  echo "Fetching ${file}..."
+  wget -q --tries=3 --timeout=10 -O "$APP_DIR/$file" "${BASE_URL}/${file}"
+  if [ ! -s "$APP_DIR/$file" ]; then
+    echo "ERROR: Failed to download ${file} or file is empty. Check URL: ${BASE_URL}/${file}"
+    exit 1
   fi
   chown www-data:www-data "$APP_DIR/$file"
   chmod 644 "$APP_DIR/$file"
