@@ -26,7 +26,8 @@ log_debug("GET params: " . var_export($_GET, true));
 
 // Optimized file serving with range support
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
-    if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
+    // Check login for page access
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
     log_debug("Redirecting to index.php due to no login");
     header("Location: /selfhostedgdrive/index.php", true, 302);
     exit;
