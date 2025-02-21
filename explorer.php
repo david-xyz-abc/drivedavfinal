@@ -26,12 +26,11 @@ log_debug("GET params: " . var_export($_GET, true));
 
 // Optimized file serving with range support
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
-    // Check login for page access
-if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
-    log_debug("Redirecting to index.php due to no login");
-    header("Location: /selfhostedgdrive/index.php", true, 302);
-    exit;
-}
+    if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
+        log_debug("Unauthorized file request, redirecting to index.php");
+        header("Location: /selfhostedgdrive/index.php", true, 302);
+        exit;
+    }
 
     $username = $_SESSION['username'];
     $baseDir = realpath("/var/www/html/webdav/users/$username/Home");
@@ -123,7 +122,7 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_
 // Check login for page access
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
     log_debug("Redirecting to index.php due to no login");
-    header("Location: index.php", true, 302);
+    header("Location: /selfhostedgdrive/index.php", true, 302);
     exit;
 }
 
@@ -154,7 +153,7 @@ log_debug("BaseDir: $baseDir (User: $username)");
 // Redirect to Home if no folder specified
 if (!isset($_GET['folder'])) {
     log_debug("No folder specified, redirecting to Home");
-    header("Location: explorer.php?folder=Home", true, 302);
+    header("Location: /selfhostedgdrive/explorer.php?folder=Home", true, 302);
     exit;
 }
 
@@ -190,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_folder'])) {
             }
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
+    header("Location: /selfhostedgdrive/explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -214,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
             log_debug("Upload error for $fname: " . $_FILES['upload_files']['error'][$i]);
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
+    header("Location: /selfhostedgdrive/explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -235,7 +234,7 @@ if (isset($_GET['delete']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             log_debug("Failed to delete item: $targetPath");
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
+    header("Location: /selfhostedgdrive/explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -272,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename_folder'])) {
             log_debug("Failed to rename folder: $oldPath to $newPath");
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
+    header("Location: /selfhostedgdrive/explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -298,7 +297,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename_file'])) {
             }
         }
     }
-    header("Location: explorer.php?folder=" . urlencode($currentRel), true, 302);
+    header("Location: /selfhostedgdrive/explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
 
@@ -334,7 +333,7 @@ if ($currentDir !== $baseDir) {
     $parts = explode('/', $currentRel);
     array_pop($parts);
     $parentRel = implode('/', $parts);
-    $parentLink = 'explorer.php?folder=' . urlencode($parentRel);
+    $parentLink = '/selfhostedgdrive/explorer.php?folder=' . urlencode($parentRel);
 }
 
 /************************************************
@@ -800,7 +799,7 @@ function isVideo($fileName) {
           <button type="button" class="btn" id="btnRenameFolder" title="Rename selected folder" style="display:none;">
             <i class="fas fa-edit"></i>
           </button>
-          <a href="logout.php" class="btn logout-btn" title="Logout">
+          <a href="/selfhostedgdrive/logout.php" class="btn logout-btn" title="Logout">
             <i class="fa fa-sign-out" aria-hidden="true"></i>
           </a>
         </div>
@@ -828,7 +827,7 @@ function isVideo($fileName) {
           <h1><?php echo ($currentRel === 'Home') ? 'Home' : htmlspecialchars($currentRel); ?></h1>
         </div>
         <div style="display: flex; gap: 10px;">
-          <form id="uploadForm" method="POST" enctype="multipart/form-data" action="explorer.php?folder=<?php echo urlencode($currentRel); ?>">
+          <form id="uploadForm" method="POST" enctype="multipart/form-data" action="/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>">
             <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" />
             <button type="button" class="btn" id="uploadBtn" title="Upload" style="width:36px; height:36px;">
               <i class="fas fa-cloud-upload-alt"></i>
@@ -915,7 +914,7 @@ function isVideo($fileName) {
   }
   function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
-    window.location.href = 'explorer.php?folder=' + folderPath;
+    window.location.href = '/selfhostedgdrive/explorer.php?folder=' + folderPath;
   }
 
   function showPrompt(message, defaultValue, callback) {
@@ -989,7 +988,7 @@ function isVideo($fileName) {
       if (folderName && folderName.trim() !== "") {
         let form = document.createElement('form');
         form.method = 'POST';
-        form.action = 'explorer.php?folder=<?php echo urlencode($currentRel); ?>';
+        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
         let inputCreate = document.createElement('input');
         inputCreate.type = 'hidden';
         inputCreate.name = 'create_folder';
@@ -1012,7 +1011,7 @@ function isVideo($fileName) {
       if (newName && newName.trim() !== "" && newName !== selectedFolder) {
         let form = document.createElement('form');
         form.method = 'POST';
-        form.action = 'explorer.php?folder=<?php echo urlencode($currentRel); ?>';
+        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
         let inputAction = document.createElement('input');
         inputAction.type = 'hidden';
         inputAction.name = 'rename_folder';
@@ -1039,7 +1038,7 @@ function isVideo($fileName) {
     showConfirm(`Delete folder "${selectedFolder}"?`, () => {
       let form = document.createElement('form');
       form.method = 'POST';
-      form.action = 'explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(selectedFolder);
+      form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(selectedFolder);
       document.body.appendChild(form);
       form.submit();
     });
@@ -1058,7 +1057,7 @@ function isVideo($fileName) {
         let finalName = newBase.trim() + ext;
         let form = document.createElement('form');
         form.method = 'POST';
-        form.action = 'explorer.php?folder=<?php echo urlencode($currentRel); ?>';
+        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
         let inputAction = document.createElement('input');
         inputAction.type = 'hidden';
         inputAction.name = 'rename_file';
@@ -1084,7 +1083,7 @@ function isVideo($fileName) {
     showConfirm(`Delete file "${fileName}"?`, () => {
       let form = document.createElement('form');
       form.method = 'POST';
-      form.action = 'explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(fileName);
+      form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(fileName);
       document.body.appendChild(form);
       form.submit();
     });
