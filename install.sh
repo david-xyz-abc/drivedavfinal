@@ -116,23 +116,33 @@ cat << EOF > /etc/apache2/sites-available/selfhostedgdrive.conf
     </Directory>
 </VirtualHost>
 EOF
+echo "Forcing Apache site configuration..."
 a2enmod rewrite || { echo "ERROR: Failed to enable rewrite module"; exit 1; }
 a2enmod php"$PHP_VERSION" || { echo "ERROR: Failed to enable PHP module"; exit 1; }
 a2dissite 000-default.conf 2>/dev/null || true
 a2ensite selfhostedgdrive.conf || { echo "ERROR: Failed to enable site"; exit 1; }
+apachectl configtest || { echo "ERROR: Apache config test failed"; exit 1; }
 
 echo "Restarting Apache..."
 systemctl restart apache2 || { echo "ERROR: Failed to restart Apache"; exit 1; }
 systemctl is-active apache2 >/dev/null || { echo "ERROR: Apache is not running"; exit 1; }
 
 echo "Verifying installation..."
-curl -s -I "http://localhost/selfhostedgdrive/index.php" | grep -q "200 OK" || {
-  echo "ERROR: Failed to access index.php locally. Check Apache status and logs:"
+echo "Testing http://localhost/selfhostedgdrive/index.php..."
+curl -s -I "http://localhost/selfhostedgdrive/index.php" > /tmp/curl_output
+cat /tmp/curl_output
+if ! grep -q "200 OK" /tmp/curl_output; then
+  echo "ERROR: Failed to access index.php locally. Check details below:"
+  echo "Apache status:"
   systemctl status apache2
-  cat /var/log/apache2/selfhostedgdrive_error.log
+  echo "Apache error log (/var/log/apache2/selfhostedgdrive_error.log):"
+  cat /var/log/apache2/selfhostedgdrive_error.log 2>/dev/null || echo "No errors logged"
+  echo "Main Apache error log (/var/log/apache2/error.log):"
   cat /var/log/apache2/error.log
+  echo "Files in $APP_DIR:"
+  ls -l "$APP_DIR"
   exit 1
-}
+fi
 
 PUBLIC_IP=$(curl -s --retry 3 http://ifconfig.me || curl -s --retry 3 http://api.ipify.org || echo "your_server_ip_here")
 if [ "$PUBLIC_IP" = "your_server_ip_here" ]; then
