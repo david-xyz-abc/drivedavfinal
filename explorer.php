@@ -906,6 +906,7 @@ html, body {
   text-align: center;
   margin-top: 5px;
   font-weight: 500;
+  color: var(--text-color);
 }
 
 .cancel-upload-btn {
@@ -946,14 +947,13 @@ html, body {
   max-width: 90vw;
   height: auto;
   max-height: 90vh;
-  background: var(--content-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: transparent; /* Removed background box */
+  border: none; /* Removed border */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 0; /* Removed padding */
 }
 
 #previewNav {
@@ -1018,9 +1018,8 @@ html, body {
   max-width: 800px;
   height: auto;
   max-height: 80vh;
-  background: var(--content-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: transparent; /* Removed background box */
+  border: none; /* Removed border */
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1233,6 +1232,7 @@ html, body {
 .dialog-message {
   margin-bottom: 20px;
   font-size: 16px;
+  color: var(--text-color);
 }
 
 .dialog-buttons {
@@ -1340,14 +1340,14 @@ html, body {
         <div style="display: flex; gap: 10px;">
           <form id="uploadForm" method="POST" enctype="multipart/form-data" action="/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>">
             <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" />
-            <button type="button" class="btn" id="uploadBtn" title="Upload" style="width:36px; height:36px;">
+            <button type="button" class="btn" id="uploadBtn" title="Upload" onclick="document.getElementById('fileInput').click()">
               <i class="fas fa-cloud-upload-alt"></i>
             </button>
           </form>
-          <button type="button" class="btn" id="gridToggleBtn" title="Toggle Grid View" style="width:36px; height:36px;">
+          <button type="button" class="btn" id="gridToggleBtn" title="Toggle Grid View" onclick="toggleGridView()">
             <i class="fas fa-th"></i>
           </button>
-          <button type="button" class="btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme" style="width:36px; height:36px;">
+          <button type="button" class="btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme" onclick="toggleTheme()">
             <i class="fas fa-moon"></i>
           </button>
           <div id="uploadProgressContainer">
@@ -1355,7 +1355,7 @@ html, body {
               <div id="uploadProgressBar"></div>
             </div>
             <div id="uploadProgressPercent">0.0%</div>
-            <button class="cancel-upload-btn" id="cancelUploadBtn">Cancel</button>
+            <button class="cancel-upload-btn" id="cancelUploadBtn" onclick="cancelUpload()">Cancel</button>
           </div>
         </div>
       </div>
@@ -1411,13 +1411,13 @@ html, body {
       <div id="videoPlayerContainer" style="display: none;">
         <video id="videoPlayer" preload="auto"></video>
         <div id="videoPlayerControls">
-          <button id="playPauseBtn" class="player-btn"><i class="fas fa-play"></i></button>
+          <button id="playPauseBtn" class="player-btn" onclick="togglePlayPause()"><i class="fas fa-play"></i></button>
           <span id="currentTime">0:00</span>
-          <input type="range" id="seekBar" value="0" min="0" step="0.1" class="seek-slider">
+          <input type="range" id="seekBar" value="0" min="0" step="0.1" class="seek-slider" oninput="seekVideo(this.value)">
           <span id="duration">0:00</span>
-          <button id="muteBtn" class="player-btn"><i class="fas fa-volume-up"></i></button>
-          <input type="range" id="volumeBar" value="1" min="0" max="1" step="0.01" class="volume-slider">
-          <button id="fullscreenBtn" class="player-btn"><i class="fas fa-expand"></i></button>
+          <button id="muteBtn" class="player-btn" onclick="toggleMute()"><i class="fas fa-volume-up"></i></button>
+          <input type="range" id="volumeBar" value="1" min="0" max="1" step="0.01" class="volume-slider" oninput="setVolume(this.value)">
+          <button id="fullscreenBtn" class="player-btn" onclick="toggleFullscreen()"><i class="fas fa-expand"></i></button>
         </div>
       </div>
       <div id="imagePreviewContainer" style="display: none;"></div>
@@ -1437,15 +1437,20 @@ html, body {
   let currentXhr = null;
   let previewFiles = []; // Array to store previewable files
   let currentPreviewIndex = -1;
+  let isGridView = false;
+
+  // Sidebar toggle
+  document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
+  document.querySelector('.hamburger').addEventListener('click', toggleSidebar);
 
   function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
+    const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
-    sb.classList.toggle('open');
+    sidebar.classList.toggle('open');
     overlay.classList.toggle('show');
   }
-  document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
 
+  // Folder selection and navigation
   function selectFolder(element, folderName) {
     document.querySelectorAll('.folder-item.selected').forEach(item => item.classList.remove('selected'));
     element.classList.add('selected');
@@ -1453,11 +1458,13 @@ html, body {
     document.getElementById('btnDeleteFolder').style.display = 'flex';
     document.getElementById('btnRenameFolder').style.display = 'flex';
   }
+
   function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
-    window.location.href = '/selfhostedgdrive/explorer.php?folder=' + folderPath;
+    window.location.href = '/selfhostedgdrive/explorer.php?folder=' + encodeURIComponent(folderPath);
   }
 
+  // Dialog functions
   function showPrompt(message, defaultValue, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
@@ -1473,10 +1480,10 @@ html, body {
     inputField.value = defaultValue || '';
     inputField.style.width = '100%';
     inputField.style.padding = '8px';
-    inputField.style.border = '1px solid #555';
+    inputField.style.border = '1px solid var(--border-color)';
     inputField.style.borderRadius = '4px';
-    inputField.style.background = '#2a2a2a';
-    inputField.style.color = '#fff';
+    inputField.style.background = 'var(--content-bg)';
+    inputField.style.color = 'var(--text-color)';
     inputField.style.marginBottom = '15px';
     dialogMessage.appendChild(inputField);
     const okBtn = document.createElement('button');
@@ -1491,7 +1498,11 @@ html, body {
     dialogButtons.appendChild(cancelBtn);
     dialogModal.classList.add('show');
   }
-  function closeDialog() { document.getElementById('dialogModal').classList.remove('show'); }
+
+  function closeDialog() {
+    document.getElementById('dialogModal').classList.remove('show');
+  }
+
   function showAlert(message, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
@@ -1505,6 +1516,7 @@ html, body {
     dialogButtons.appendChild(okBtn);
     dialogModal.classList.add('show');
   }
+
   function showConfirm(message, onYes, onNo) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
@@ -1524,18 +1536,19 @@ html, body {
     dialogModal.classList.add('show');
   }
 
+  // Folder and file actions
   function createFolder() {
     showPrompt("Enter new folder name:", "", function(folderName) {
       if (folderName && folderName.trim() !== "") {
-        let form = document.createElement('form');
+        const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputCreate = document.createElement('input');
+        const inputCreate = document.createElement('input');
         inputCreate.type = 'hidden';
         inputCreate.name = 'create_folder';
         inputCreate.value = '1';
         form.appendChild(inputCreate);
-        let inputName = document.createElement('input');
+        const inputName = document.createElement('input');
         inputName.type = 'hidden';
         inputName.name = 'folder_name';
         inputName.value = folderName.trim();
@@ -1550,20 +1563,20 @@ html, body {
     if (!selectedFolder) return;
     showPrompt("Enter new folder name:", selectedFolder, function(newName) {
       if (newName && newName.trim() !== "" && newName !== selectedFolder) {
-        let form = document.createElement('form');
+        const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputAction = document.createElement('input');
+        const inputAction = document.createElement('input');
         inputAction.type = 'hidden';
         inputAction.name = 'rename_folder';
         inputAction.value = '1';
         form.appendChild(inputAction);
-        let inputOld = document.createElement('input');
+        const inputOld = document.createElement('input');
         inputOld.type = 'hidden';
         inputOld.name = 'old_folder_name';
         inputOld.value = selectedFolder;
         form.appendChild(inputOld);
-        let inputNew = document.createElement('input');
+        const inputNew = document.createElement('input');
         inputNew.type = 'hidden';
         inputNew.name = 'new_folder_name';
         inputNew.value = newName.trim();
@@ -1577,7 +1590,7 @@ html, body {
   document.getElementById('btnDeleteFolder').addEventListener('click', function() {
     if (!selectedFolder) return;
     showConfirm(`Delete folder "${selectedFolder}"?`, () => {
-      let form = document.createElement('form');
+      const form = document.createElement('form');
       form.method = 'POST';
       form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(selectedFolder);
       document.body.appendChild(form);
@@ -1596,20 +1609,20 @@ html, body {
     showPrompt("Enter new file name:", baseName, function(newBase) {
       if (newBase && newBase.trim() !== "" && newBase.trim() !== baseName) {
         let finalName = newBase.trim() + ext;
-        let form = document.createElement('form');
+        const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputAction = document.createElement('input');
+        const inputAction = document.createElement('input');
         inputAction.type = 'hidden';
         inputAction.name = 'rename_file';
         inputAction.value = '1';
         form.appendChild(inputAction);
-        let inputOld = document.createElement('input');
+        const inputOld = document.createElement('input');
         inputOld.type = 'hidden';
         inputOld.name = 'old_file_name';
         inputOld.value = fileName;
         form.appendChild(inputOld);
-        let inputNew = document.createElement('input');
+        const inputNew = document.createElement('input');
         inputNew.type = 'hidden';
         inputNew.name = 'new_file_name';
         inputNew.value = finalName;
@@ -1622,7 +1635,7 @@ html, body {
 
   function confirmFileDelete(fileName) {
     showConfirm(`Delete file "${fileName}"?`, () => {
-      let form = document.createElement('form');
+      const form = document.createElement('form');
       form.method = 'POST';
       form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(fileName);
       document.body.appendChild(form);
@@ -1737,7 +1750,7 @@ html, body {
       localStorage.setItem(videoKey, video.currentTime);
     };
 
-    playPauseBtn.onclick = () => {
+    function togglePlayPause() {
       if (video.paused) {
         video.play();
         playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
@@ -1745,25 +1758,25 @@ html, body {
         video.pause();
         playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
       }
-    };
+    }
 
-    seekBar.oninput = () => {
-      video.currentTime = seekBar.value;
-    };
+    function seekVideo(value) {
+      video.currentTime = value;
+    }
 
-    muteBtn.onclick = () => {
+    function toggleMute() {
       video.muted = !video.muted;
       muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
       volumeBar.value = video.muted ? 0 : video.volume;
-    };
+    }
 
-    volumeBar.oninput = () => {
-      video.volume = volumeBar.value;
-      video.muted = (volumeBar.value == 0);
+    function setVolume(value) {
+      video.volume = value;
+      video.muted = (value == 0);
       muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
-    };
+    }
 
-    fullscreenBtn.onclick = () => {
+    function toggleFullscreen() {
       if (!document.fullscreenElement) {
         previewModal.classList.add('fullscreen');
         previewModal.requestFullscreen();
@@ -1771,13 +1784,18 @@ html, body {
         document.exitFullscreen();
         previewModal.classList.remove('fullscreen');
       }
-    };
+    }
 
-    video.onclick = () => playPauseBtn.click();
+    playPauseBtn.onclick = togglePlayPause;
+    seekBar.oninput = () => seekVideo(seekBar.value);
+    muteBtn.onclick = toggleMute;
+    volumeBar.oninput = () => setVolume(volumeBar.value);
+    fullscreenBtn.onclick = toggleFullscreen;
 
+    video.onclick = togglePlayPause;
     video.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      playPauseBtn.click();
+      togglePlayPause();
     });
   }
 
@@ -1817,6 +1835,7 @@ html, body {
     nextBtn.disabled = previewFiles.length <= 1;
   }
 
+  // Upload and drag-drop functionality
   const uploadForm = document.getElementById('uploadForm');
   const fileInput = document.getElementById('fileInput');
   const uploadBtn = document.getElementById('uploadBtn');
@@ -1827,7 +1846,6 @@ html, body {
   const dropZone = document.getElementById('dropZone');
   const mainContent = document.querySelector('.main-content');
   const fileList = document.getElementById('fileList');
-  const gridToggleBtn = document.getElementById('gridToggleBtn');
 
   uploadBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
@@ -1856,7 +1874,7 @@ html, body {
   }
 
   function uploadChunk(file, startByte, fileName) {
-    const chunkSize = 10 * 1024 * 1024;
+    const chunkSize = 10 * 1024 * 1024; // 10 MB chunks
     const endByte = Math.min(startByte + chunkSize, file.size);
     const chunk = file.slice(startByte, endByte);
     
@@ -1876,12 +1894,14 @@ html, body {
       const xhr = new XMLHttpRequest();
       currentXhr = xhr;
       xhr.open('POST', uploadForm.action, true);
-      xhr.timeout = 3600000;
+      xhr.timeout = 3600000; // 1 hour timeout
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          let totalPercent = Math.round((startByte + e.loaded) / file.size * 10) / 10; // One decimal place
-          uploadProgressBar.style.width = totalPercent + '%';
-          uploadProgressPercent.textContent = `${totalPercent}% - Uploading ${fileName}`;
+          const totalBytesUploaded = startByte + e.loaded;
+          const progress = Math.min((totalBytesUploaded / file.size) * 100, 100); // Ensure progress doesn't exceed 100%
+          const roundedProgress = Math.round(progress * 10) / 10; // One decimal place
+          uploadProgressBar.style.width = roundedProgress + '%';
+          uploadProgressPercent.textContent = `${roundedProgress}% - Uploading ${fileName}`;
         }
       };
       xhr.onload = () => {
@@ -1889,8 +1909,13 @@ html, body {
           if (endByte < file.size) {
             uploadChunk(file, endByte, fileName);
           } else {
+            uploadProgressBar.style.width = '100%'; // Ensure it reaches 100%
+            uploadProgressPercent.textContent = `100.0% - Upload completed for ${fileName}`;
             showAlert('Upload completed successfully.');
-            location.reload();
+            setTimeout(() => {
+              uploadProgressContainer.style.display = 'none';
+              location.reload();
+            }, 1000); // Wait 1 second before hiding and reloading
           }
         } else {
           handleUploadError(xhr, attempts, maxAttempts);
@@ -1924,7 +1949,27 @@ html, body {
     }
   });
 
-  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  // Grid view toggle
+  function toggleGridView() {
+    isGridView = !isGridView;
+    fileList.classList.toggle('grid-view', isGridView);
+    const icon = gridToggleBtn.querySelector('i');
+    icon.classList.toggle('fa-th', isGridView);
+    icon.classList.toggle('fa-list', !isGridView);
+    gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
+  }
+
+  // Theme toggle
+  function toggleTheme() {
+    document.body.classList.toggle('light-mode');
+    const isLightMode = document.body.classList.contains('light-mode');
+    const icon = themeToggleBtn.querySelector('i');
+    icon.classList.toggle('fa-moon', !isLightMode);
+    icon.classList.toggle('fa-sun', isLightMode);
+    localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
+  }
+
+  // Initialize theme and grid view
   const body = document.body;
   const savedTheme = localStorage.getItem('theme') || 'dark';
   if (savedTheme === 'light') {
@@ -1934,25 +1979,7 @@ html, body {
     body.classList.remove('light-mode');
     themeToggleBtn.querySelector('i').classList.replace('fa-sun', 'fa-moon');
   }
-  themeToggleBtn.addEventListener('click', () => {
-    body.classList.toggle('light-mode');
-    const isLightMode = body.classList.contains('light-mode');
-    themeToggleBtn.querySelector('i').classList.toggle('fa-moon', !isLightMode);
-    themeToggleBtn.querySelector('i').classList.toggle('fa-sun', isLightMode);
-    localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
-  });
 
-  // Grid View Toggle
-  let isGridView = false;
-  gridToggleBtn.addEventListener('click', () => {
-    isGridView = !isGridView;
-    fileList.classList.toggle('grid-view', isGridView);
-    gridToggleBtn.querySelector('i').classList.toggle('fa-th', isGridView);
-    gridToggleBtn.querySelector('i').classList.toggle('fa-list', !isGridView);
-    gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
-  });
-
-  // Set initial icon for grid toggle button
   gridToggleBtn.querySelector('i').classList.add('fa-th');
 </script>
 </body>
