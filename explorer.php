@@ -548,6 +548,10 @@ html, body {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
 }
 
 .top-row {
@@ -566,7 +570,7 @@ html, body {
 }
 
 .storage-indicator {
-  margin-top: 20px;
+  margin-top: auto; /* Anchor to bottom */
   padding: 10px;
   background: var(--content-bg);
   border: 1px solid var(--border-color);
@@ -746,7 +750,7 @@ html, body {
   border-radius: 4px;
   transition: box-shadow 0.3s ease, transform 0.2s;
   position: relative;
-  cursor: pointer; /* Make entire row clickable in list view */
+  cursor: pointer;
 }
 
 .file-list.grid-view .file-row {
@@ -757,7 +761,7 @@ html, body {
   text-align: center;
   overflow: hidden;
   position: relative;
-  cursor: pointer; /* Make entire square clickable in grid view */
+  cursor: pointer;
 }
 
 .file-row:hover {
@@ -774,6 +778,11 @@ html, body {
   font-size: 20px;
   margin-right: 10px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; /* Ensure consistent icon size */
+  height: 24px;
 }
 
 .file-list.grid-view .file-icon {
@@ -785,6 +794,8 @@ html, body {
   background: rgba(0, 0, 0, 0.5);
   padding: 5px;
   border-radius: 4px;
+  width: 24px;
+  height: 24px;
 }
 
 .file-preview {
@@ -1285,7 +1296,7 @@ html, body {
             </li>
           <?php endforeach; ?>
         </ul>
-        <!-- Storage Indicator in Sidebar -->
+        <!-- Storage Indicator at Bottom of Sidebar -->
         <div class="storage-indicator">
           <p><?php echo "$usedStorageGB GB used of $totalStorageGB GB"; ?></p>
           <div class="storage-bar">
@@ -1340,11 +1351,11 @@ html, body {
               log_debug("File URL for $fileName: $fileURL");
             ?>
             <div class="file-row" onclick="<?php echo $canPreview ? "openPreviewModal('$fileURL','".addslashes($fileName)."')" : "downloadFile('$fileURL')"; ?>">
-              <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? ' no-preview' : ''; ?>"></i>
+              <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? '' : ' no-preview'; ?>"></i>
               <?php if ($isImageFile): ?>
-                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
+                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy" style="display: none;">
               <?php elseif ($isVideoFile): ?>
-                <i class="fas fa-file-video file-preview-icon" style="font-size: 60px; color: #666; width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.1); border-radius: 4px; margin-bottom: 10px;"></i>
+                <!-- No preview in list view, just icon -->
               <?php endif; ?>
               <div class="file-name"
                    title="<?php echo htmlspecialchars($fileName); ?>">
@@ -1613,7 +1624,7 @@ html, body {
       if (isImage($fileName) || isVideo($fileName)) {
           $relativePath = $currentRel . '/' . $fileName;
           $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
-          $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL];
+          $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL, 'type' => isImage($fileName) ? 'image' : 'video'];
       }
   }
   ?>
