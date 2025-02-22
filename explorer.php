@@ -1280,7 +1280,7 @@ html, body {
             <div style="background:var(--border-color); width:100%; height:20px; border-radius:4px; overflow:hidden;">
               <div id="uploadProgressBar"></div>
             </div>
-            <div id="uploadProgressPercent">0%</div>
+            <div id="uploadProgressPercent">0.0%</div>
             <button class="cancel-upload-btn" id="cancelUploadBtn">Cancel</button>
           </div>
         </div>
@@ -1303,7 +1303,7 @@ html, body {
               <?php if ($isImageFile): ?>
                 <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
               <?php elseif ($isVideoFile): ?>
-                <img src="https://via.placeholder.com/150x120.png?text=Video" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
+                <i class="fas fa-file-video file-preview-icon" style="font-size: 60px; color: #666; width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.1); border-radius: 4px; margin-bottom: 10px;"></i>
               <?php endif; ?>
               <div class="file-name"
                    title="<?php echo htmlspecialchars($fileName); ?>"
