@@ -956,6 +956,14 @@ html, body {
   padding: 20px;
 }
 
+#previewContent.image-preview {
+  background: none;
+  border: none;
+  padding: 0;
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
 #previewNav {
   display: flex;
   justify-content: space-between;
@@ -1192,8 +1200,8 @@ html, body {
 #imagePreviewContainer {
   width: 100%;
   height: 100%;
-  max-width: 90vw;
-  max-height: 90vh;
+  max-width: 100vw;
+  max-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1203,6 +1211,8 @@ html, body {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  width: auto;
+  height: auto;
 }
 
 #dialogModal {
@@ -1657,6 +1667,7 @@ html, body {
     const videoContainer = document.getElementById('videoPlayerContainer');
     const imageContainer = document.getElementById('imagePreviewContainer');
     const iconContainer = document.getElementById('iconPreviewContainer');
+    const previewContent = document.getElementById('previewContent');
     const videoPlayer = document.getElementById('videoPlayer');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
@@ -1670,6 +1681,7 @@ html, body {
     iconContainer.innerHTML = ''; // Clear icon content
     videoPlayer.pause();
     videoPlayer.src = ''; // Reset video source
+    previewContent.classList.remove('image-preview'); // Reset class
 
     // Populate previewable files
     previewFiles = <?php echo json_encode($previewableFiles); ?>;
@@ -1688,6 +1700,7 @@ html, body {
           imageContainer.appendChild(img);
           imageContainer.style.display = 'flex';
           previewClose.style.display = 'none'; // Hide close button for images
+          previewContent.classList.add('image-preview'); // Remove box styling
         })
         .catch(error => showAlert('Preview error: ' + error.message));
     } else if (file.type === 'video') {
@@ -1807,6 +1820,7 @@ html, body {
     document.getElementById('previewModal').classList.remove('fullscreen');
     document.getElementById('previewModal').onclick = null; // Remove event listener
     document.getElementById('previewClose').style.display = 'block'; // Reset close button visibility
+    document.getElementById('previewContent').classList.remove('image-preview'); // Reset class
     previewFiles = [];
     currentPreviewIndex = -1;
   }
@@ -1960,18 +1974,22 @@ html, body {
     localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
   });
 
-  // Grid View Toggle
-  let isGridView = false;
-  gridToggleBtn.addEventListener('click', () => {
-    isGridView = !isGridView;
+  // Grid View Toggle with Persistence
+  let isGridView = localStorage.getItem('gridView') === 'true';
+  function updateGridView() {
     fileList.classList.toggle('grid-view', isGridView);
     gridToggleBtn.querySelector('i').classList.toggle('fa-th', isGridView);
     gridToggleBtn.querySelector('i').classList.toggle('fa-list', !isGridView);
     gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
-  });
+  }
+  // Initialize grid view state
+  updateGridView();
 
-  // Set initial icon for grid toggle button
-  gridToggleBtn.querySelector('i').classList.add('fa-th');
+  gridToggleBtn.addEventListener('click', () => {
+    isGridView = !isGridView;
+    localStorage.setItem('gridView', isGridView);
+    updateGridView();
+  });
 </script>
 </body>
 </html>
