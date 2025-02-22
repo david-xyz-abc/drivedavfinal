@@ -1312,8 +1312,7 @@ html, body {
             <?php $folderPath = ($currentRel === 'Home' ? '' : $currentRel . '/') . $folderName; 
                   log_debug("Folder path for $folderName: $folderPath"); ?>
             <li class="folder-item"
-                ondblclick="openFolder('<?php echo urlencode($folderPath); ?>')"
-                onclick="selectFolder(this, '<?php echo addslashes($folderName); ?>'); event.stopPropagation();">
+                onclick="openFolder('<?php echo urlencode($folderPath); ?>')">
               <i class="fas fa-folder"></i> <?php echo htmlspecialchars($folderName); ?>
             </li>
           <?php endforeach; ?>
@@ -1339,8 +1338,8 @@ html, body {
         </div>
         <div style="display: flex; gap: 10px;">
           <form id="uploadForm" method="POST" enctype="multipart/form-data" action="/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>">
-            <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" />
-            <button type="button" class="btn" id="uploadBtn" title="Upload" onclick="document.getElementById('fileInput').click()">
+            <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" onchange="handleFileSelect(event)" />
+            <button type="button" class="btn" id="uploadBtn" title="Upload" onclick="triggerFileInput()">
               <i class="fas fa-cloud-upload-alt"></i>
             </button>
           </form>
@@ -1450,15 +1449,7 @@ html, body {
     overlay.classList.toggle('show');
   }
 
-  // Folder selection and navigation
-  function selectFolder(element, folderName) {
-    document.querySelectorAll('.folder-item.selected').forEach(item => item.classList.remove('selected'));
-    element.classList.add('selected');
-    selectedFolder = folderName;
-    document.getElementById('btnDeleteFolder').style.display = 'flex';
-    document.getElementById('btnRenameFolder').style.display = 'flex';
-  }
-
+  // Folder navigation (single click instead of double-click)
   function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
     window.location.href = '/selfhostedgdrive/explorer.php?folder=' + encodeURIComponent(folderPath);
@@ -1835,7 +1826,7 @@ html, body {
     nextBtn.disabled = previewFiles.length <= 1;
   }
 
-  // Upload and drag-drop functionality
+  // Upload functionality
   const uploadForm = document.getElementById('uploadForm');
   const fileInput = document.getElementById('fileInput');
   const uploadBtn = document.getElementById('uploadBtn');
@@ -1846,11 +1837,22 @@ html, body {
   const dropZone = document.getElementById('dropZone');
   const mainContent = document.querySelector('.main-content');
   const fileList = document.getElementById('fileList');
+  const gridToggleBtn = document.getElementById('gridToggleBtn');
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
 
-  uploadBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files.length) startUpload(fileInput.files);
-  });
+  function triggerFileInput() {
+    fileInput.click();
+  }
+
+  function handleFileSelect(event) {
+    const files = event.target.files;
+    if (files.length > 0) {
+      startUpload(files);
+    }
+    event.target.value = ''; // Reset file input to allow re-selection of same file
+  }
+
+  uploadBtn.addEventListener('click', triggerFileInput);
 
   mainContent.addEventListener('dragover', (e) => {
     e.preventDefault();
