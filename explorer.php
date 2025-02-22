@@ -1312,7 +1312,8 @@ html, body {
             <?php $folderPath = ($currentRel === 'Home' ? '' : $currentRel . '/') . $folderName; 
                   log_debug("Folder path for $folderName: $folderPath"); ?>
             <li class="folder-item"
-                onclick="openFolder('<?php echo urlencode($folderPath); ?>')">
+                ondblclick="openFolder('<?php echo urlencode($folderPath); ?>')"
+                onclick="selectFolder(this, '<?php echo addslashes($folderName); ?>'); event.stopPropagation();">
               <i class="fas fa-folder"></i> <?php echo htmlspecialchars($folderName); ?>
             </li>
           <?php endforeach; ?>
@@ -1338,15 +1339,15 @@ html, body {
         </div>
         <div style="display: flex; gap: 10px;">
           <form id="uploadForm" method="POST" enctype="multipart/form-data" action="/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>">
-            <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" onchange="handleFileSelect(event)" />
-            <button type="button" class="btn" id="uploadBtn" title="Upload" onclick="triggerFileInput()">
+            <input type="file" name="upload_files[]" multiple id="fileInput" style="display:none;" />
+            <button type="button" class="btn" id="uploadBtn" title="Upload" style="width:36px; height:36px;">
               <i class="fas fa-cloud-upload-alt"></i>
             </button>
           </form>
-          <button type="button" class="btn" id="gridToggleBtn" title="Toggle Grid View" onclick="toggleGridView()">
+          <button type="button" class="btn" id="gridToggleBtn" title="Toggle Grid View" style="width:36px; height:36px;">
             <i class="fas fa-th"></i>
           </button>
-          <button type="button" class="btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme" onclick="toggleTheme()">
+          <button type="button" class="btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme" style="width:36px; height:36px;">
             <i class="fas fa-moon"></i>
           </button>
           <div id="uploadProgressContainer">
@@ -1354,7 +1355,7 @@ html, body {
               <div id="uploadProgressBar"></div>
             </div>
             <div id="uploadProgressPercent">0.0%</div>
-            <button class="cancel-upload-btn" id="cancelUploadBtn" onclick="cancelUpload()">Cancel</button>
+            <button class="cancel-upload-btn" id="cancelUploadBtn">Cancel</button>
           </div>
         </div>
       </div>
@@ -1410,13 +1411,13 @@ html, body {
       <div id="videoPlayerContainer" style="display: none;">
         <video id="videoPlayer" preload="auto"></video>
         <div id="videoPlayerControls">
-          <button id="playPauseBtn" class="player-btn" onclick="togglePlayPause()"><i class="fas fa-play"></i></button>
+          <button id="playPauseBtn" class="player-btn"><i class="fas fa-play"></i></button>
           <span id="currentTime">0:00</span>
-          <input type="range" id="seekBar" value="0" min="0" step="0.1" class="seek-slider" oninput="seekVideo(this.value)">
+          <input type="range" id="seekBar" value="0" min="0" step="0.1" class="seek-slider">
           <span id="duration">0:00</span>
-          <button id="muteBtn" class="player-btn" onclick="toggleMute()"><i class="fas fa-volume-up"></i></button>
-          <input type="range" id="volumeBar" value="1" min="0" max="1" step="0.01" class="volume-slider" oninput="setVolume(this.value)">
-          <button id="fullscreenBtn" class="player-btn" onclick="toggleFullscreen()"><i class="fas fa-expand"></i></button>
+          <button id="muteBtn" class="player-btn"><i class="fas fa-volume-up"></i></button>
+          <input type="range" id="volumeBar" value="1" min="0" max="1" step="0.01" class="volume-slider">
+          <button id="fullscreenBtn" class="player-btn"><i class="fas fa-expand"></i></button>
         </div>
       </div>
       <div id="imagePreviewContainer" style="display: none;"></div>
@@ -1436,26 +1437,28 @@ html, body {
   let currentXhr = null;
   let previewFiles = []; // Array to store previewable files
   let currentPreviewIndex = -1;
-  let isGridView = false;
-
-  // Sidebar toggle
-  document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
-  document.querySelector('.hamburger').addEventListener('click', toggleSidebar);
 
   function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
+    const sb = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
-    sidebar.classList.toggle('open');
+    sb.classList.toggle('open');
     overlay.classList.toggle('show');
   }
+  document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
 
-  // Folder navigation (single click from old code)
+  function selectFolder(element, folderName) {
+    document.querySelectorAll('.folder-item.selected').forEach(item => item.classList.remove('selected'));
+    element.classList.add('selected');
+    selectedFolder = folderName;
+    document.getElementById('btnDeleteFolder').style.display = 'flex';
+    document.getElementById('btnRenameFolder').style.display = 'flex';
+  }
+
   function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
     window.location.href = '/selfhostedgdrive/explorer.php?folder=' + encodeURIComponent(folderPath);
   }
 
-  // Dialog functions (from old code, with color updates)
   function showPrompt(message, defaultValue, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
@@ -1535,7 +1538,6 @@ html, body {
     dialogModal.classList.add('show');
   }
 
-  // Folder and file actions (from old code)
   function createFolder() {
     showPrompt("Enter new folder name:", "", function(folderName) {
       if (folderName && folderName.trim() !== "") {
@@ -1749,7 +1751,7 @@ html, body {
       localStorage.setItem(videoKey, video.currentTime);
     };
 
-    function togglePlayPause() {
+    playPauseBtn.onclick = () => {
       if (video.paused) {
         video.play();
         playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
@@ -1757,25 +1759,25 @@ html, body {
         video.pause();
         playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
       }
-    }
+    };
 
-    function seekVideo(value) {
-      video.currentTime = value;
-    }
+    seekBar.oninput = () => {
+      video.currentTime = seekBar.value;
+    };
 
-    function toggleMute() {
+    muteBtn.onclick = () => {
       video.muted = !video.muted;
       muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
       volumeBar.value = video.muted ? 0 : video.volume;
-    }
+    };
 
-    function setVolume(value) {
-      video.volume = value;
-      video.muted = (value == 0);
+    volumeBar.oninput = () => {
+      video.volume = volumeBar.value;
+      video.muted = (volumeBar.value == 0);
       muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
-    }
+    };
 
-    function toggleFullscreen() {
+    fullscreenBtn.onclick = () => {
       if (!document.fullscreenElement) {
         previewModal.classList.add('fullscreen');
         previewModal.requestFullscreen();
@@ -1783,18 +1785,13 @@ html, body {
         document.exitFullscreen();
         previewModal.classList.remove('fullscreen');
       }
-    }
+    };
 
-    playPauseBtn.onclick = togglePlayPause;
-    seekBar.oninput = () => seekVideo(seekBar.value);
-    muteBtn.onclick = toggleMute;
-    volumeBar.oninput = () => setVolume(volumeBar.value);
-    fullscreenBtn.onclick = toggleFullscreen;
+    video.onclick = () => playPauseBtn.click();
 
-    video.onclick = togglePlayPause;
     video.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      togglePlayPause();
+      playPauseBtn.click();
     });
   }
 
@@ -1834,7 +1831,6 @@ html, body {
     nextBtn.disabled = previewFiles.length <= 1;
   }
 
-  // Upload functionality (from old code, with single-click fix)
   const uploadForm = document.getElementById('uploadForm');
   const fileInput = document.getElementById('fileInput');
   const uploadBtn = document.getElementById('uploadBtn');
@@ -1848,20 +1844,10 @@ html, body {
   const gridToggleBtn = document.getElementById('gridToggleBtn');
   const themeToggleBtn = document.getElementById('themeToggleBtn');
 
-  function triggerFileInput() {
-    fileInput.click();
-  }
-
-  function handleFileSelect(event) {
-    const files = event.target.files;
-    if (files.length > 0) {
-      startUpload(files);
-    }
-    event.target.value = ''; // Reset file input to allow re-selection of same file
-  }
-
-  uploadBtn.addEventListener('click', triggerFileInput);
-  fileInput.addEventListener('change', handleFileSelect);
+  uploadBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) startUpload(fileInput.files);
+  });
 
   mainContent.addEventListener('dragover', (e) => {
     e.preventDefault();
