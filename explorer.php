@@ -74,10 +74,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
     $mime = $mime_types[$ext] ?? mime_content_type($filePath) ?? 'application/octet-stream';
 
-    // Force download for all files
+    // Serve file (no force download for previewable types)
     header("Content-Type: $mime");
     header("Accept-Ranges: bytes");
-    header("Content-Disposition: attachment; filename=\"$fileName\"");
     header("Content-Length: $fileSize");
     header("Cache-Control: private, max-age=31536000");
     header("X-Content-Type-Options: nosniff");
@@ -90,7 +89,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
         exit;
     }
 
-    ob_clean(); // Clear any output buffer to prevent corruption
+    ob_clean();
 
     // Handle range requests
     if (isset($_SERVER['HTTP_RANGE'])) {
@@ -128,7 +127,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
             exit;
         }
     } else {
-        // Full file download
         while (!feof($fp) && !connection_aborted()) {
             echo fread($fp, 8192);
             flush();
@@ -221,41 +219,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
     foreach ($_FILES['upload_files']['name'] as $i => $fname) {
         if ($_FILES['upload_files']['error'][$i] === UPLOAD_ERR_OK) {
             $tmpPath = $_FILES['upload_files']['tmp_name'][$i];
-            $dest = $currentDir . '/' . basename($fname);
-            
-            // Use streams for large files to avoid memory issues
-            $input = fopen($tmpPath, 'rb');
-            $output = fopen($dest, 'wb');
-            if ($input && $output) {
-                while (!feof($input)) {
-                    $data = fread($input, 8192); // Read in 8KB chunks
-                    if ($data === false) {
-                        log_debug("Failed to read chunk for $fname");
-                        $_SESSION['error'] = "Failed to read uploaded file: $fname";
-                        fclose($input);
-                        fclose($output);
-                        unlink($dest);
-                        continue 2;
-                    }
-                    if (fwrite($output, $data) === false) {
-                        log_debug("Failed to write chunk for $fname");
-                        $_SESSION['error'] = "Failed to write uploaded file: $fname";
-                        fclose($input);
-                        fclose($output);
-                        unlink($dest);
-                        continue 2;
-                    }
-                }
-                fclose($input);
-                fclose($output);
-                chown($dest, 'www-data');
-                chgrp($dest, 'www-data');
-                chmod($dest, 0664);
-                log_debug("Uploaded file: $dest");
-            } else {
-                log_debug("Failed to open file streams for $fname");
-                $_SESSION['error'] = "Failed to process uploaded file: $fname";
+            $originalName = $_POST['file_name'] ?? basename($fname); // Use file_name from JS or fallback
+            $dest = $currentDir . '/' . $originalName;
+            $chunkStart = (int)($_POST['chunk_start'] ?? 0);
+            $totalSize = (int)($_POST['total_size'] ?? filesize($tmpPath));
+
+            // Open the destination file in append mode for chunks
+            $output = fopen($dest, $chunkStart === 0 ? 'wb' : 'ab');
+            if (!$output) {
+                log_debug("Failed to open destination file: $dest");
+                $_SESSION['error'] = "Failed to open file for writing: $originalName";
                 continue;
+            }
+
+            $input = fopen($tmpPath, 'rb');
+            if (!$input) {
+                log_debug("Failed to open temp file: $tmpPath");
+                $_SESSION['error'] = "Failed to read uploaded file: $originalName";
+                fclose($output);
+                continue;
+            }
+
+            // Seek to the correct position if appending
+            if ($chunkStart > 0) {
+                fseek($output, $chunkStart);
+            }
+
+            // Write the chunk
+            while (!feof($input)) {
+                $data = fread($input, 8192);
+                if ($data === false || fwrite($output, $data) === false) {
+                    log_debug("Failed to write chunk for $originalName at offset $chunkStart");
+                    $_SESSION['error'] = "Failed to write chunk for $originalName";
+                    fclose($input);
+                    fclose($output);
+                    unlink($dest);
+                    continue 2;
+                }
+            }
+
+            fclose($input);
+            fclose($output);
+
+            // Set permissions
+            chown($dest, 'www-data');
+            chgrp($dest, 'www-data');
+            chmod($dest, 0664);
+            log_debug("Uploaded chunk for: $dest at offset $chunkStart");
+
+            // Check if this is the final chunk
+            if (filesize($dest) >= $totalSize) {
+                log_debug("Completed upload for: $dest");
             }
         } else {
             $errorMsg = match ($_FILES['upload_files']['error'][$i]) {
@@ -275,6 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
     header("Location: /selfhostedgdrive/explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
+
 /************************************************
  * 5. Delete an item (folder or file)
  ************************************************/
@@ -428,7 +443,7 @@ function isVideo($fileName) {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"/>
-<style>
+  <style>
 :root {
   --background: #121212;
   --text-color: #fff;
@@ -1058,7 +1073,7 @@ html, body {
 }
 
 #dropZone.active { display: flex; }
-</style>
+  </style>
 </head>
 <body>
   <div class="app-container">
@@ -1160,24 +1175,25 @@ html, body {
     </div>
   </div>
 
- <div id="previewModal">
-  <div id="previewContent">
-    <span id="previewClose" onclick="closePreviewModal()"><i class="fas fa-times"></i></span>
-    <div id="videoPlayerContainer" style="display: none;">
-      <video id="videoPlayer" preload="metadata"></video>
-      <div id="videoPlayerControls">
-        <button id="playPauseBtn" class="player-btn"><i class="fas fa-play"></i></button>
-        <span id="currentTime">0:00</span>
-        <input type="range" id="seekBar" value="0" min="0" step="0.1" class="seek-slider">
-        <span id="duration">0:00</span>
-        <button id="muteBtn" class="player-btn"><i class="fas fa-volume-up"></i></button>
-        <input type="range" id="volumeBar" value="1" min="0" max="1" step="0.01" class="volume-slider">
-        <button id="fullscreenBtn" class="player-btn"><i class="fas fa-expand"></i></button>
+  <div id="previewModal">
+    <div id="previewContent">
+      <span id="previewClose" onclick="closePreviewModal()"><i class="fas fa-times"></i></span>
+      <div id="videoPlayerContainer" style="display: none;">
+        <video id="videoPlayer" preload="metadata"></video>
+        <div id="videoPlayerControls">
+          <button id="playPauseBtn" class="player-btn"><i class="fas fa-play"></i></button>
+          <span id="currentTime">0:00</span>
+          <input type="range" id="seekBar" value="0" min="0" step="0.1" class="seek-slider">
+          <span id="duration">0:00</span>
+          <button id="muteBtn" class="player-btn"><i class="fas fa-volume-up"></i></button>
+          <input type="range" id="volumeBar" value="1" min="0" max="1" step="0.01" class="volume-slider">
+          <button id="fullscreenBtn" class="player-btn"><i class="fas fa-expand"></i></button>
+        </div>
       </div>
+      <div id="imagePreviewContainer" style="display: none;"></div>
     </div>
-    <div id="imagePreviewContainer" style="display: none;"></div>
   </div>
-</div>
+
   <div id="dialogModal">
     <div class="dialog-content">
       <div class="dialog-message" id="dialogMessage"></div>
@@ -1428,86 +1444,84 @@ html, body {
   window.openPreviewModal = openPreviewModal;
 
   function setupVideoPlayer(fileURL, fileName) {
-  const video = document.getElementById('videoPlayer');
-  const playPauseBtn = document.getElementById('playPauseBtn');
-  const seekBar = document.getElementById('seekBar');
-  const currentTime = document.getElementById('currentTime');
-  const duration = document.getElementById('duration');
-  const muteBtn = document.getElementById('muteBtn');
-  const volumeBar = document.getElementById('volumeBar');
-  const fullscreenBtn = document.getElementById('fullscreenBtn');
-  const previewModal = document.getElementById('previewModal');
+    const video = document.getElementById('videoPlayer');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const seekBar = document.getElementById('seekBar');
+    const currentTime = document.getElementById('currentTime');
+    const duration = document.getElementById('duration');
+    const muteBtn = document.getElementById('muteBtn');
+    const volumeBar = document.getElementById('volumeBar');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const previewModal = document.getElementById('previewModal');
 
-  // Set video source and enable streaming
-  video.src = fileURL;
-  video.preload = 'metadata'; // Load metadata for seeking
-  video.load(); // Ensure the video starts loading
+    video.src = fileURL;
+    video.preload = 'metadata';
+    video.load();
 
-  const videoKey = `video_position_${fileName}`;
-  const savedTime = localStorage.getItem(videoKey);
-  if (savedTime) video.currentTime = parseFloat(savedTime);
+    const videoKey = `video_position_${fileName}`;
+    const savedTime = localStorage.getItem(videoKey);
+    if (savedTime) video.currentTime = parseFloat(savedTime);
 
-  video.onloadedmetadata = () => {
-    seekBar.max = video.duration;
-    duration.textContent = formatTime(video.duration);
-  };
+    video.onloadedmetadata = () => {
+      seekBar.max = video.duration;
+      duration.textContent = formatTime(video.duration);
+    };
 
-  video.ontimeupdate = () => {
-    seekBar.value = video.currentTime;
-    currentTime.textContent = formatTime(video.currentTime);
-    localStorage.setItem(videoKey, video.currentTime);
-  };
+    video.ontimeupdate = () => {
+      seekBar.value = video.currentTime;
+      currentTime.textContent = formatTime(video.currentTime);
+      localStorage.setItem(videoKey, video.currentTime);
+    };
 
-  playPauseBtn.onclick = () => {
-    if (video.paused) {
-      video.play();
-      playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-    } else {
-      video.pause();
-      playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-    }
-  };
+    playPauseBtn.onclick = () => {
+      if (video.paused) {
+        video.play();
+        playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+      } else {
+        video.pause();
+        playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+      }
+    };
 
-  seekBar.oninput = () => {
-    video.currentTime = seekBar.value;
-  };
+    seekBar.oninput = () => {
+      video.currentTime = seekBar.value;
+    };
 
-  muteBtn.onclick = () => {
-    video.muted = !video.muted;
-    muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
-    volumeBar.value = video.muted ? 0 : video.volume;
-  };
+    muteBtn.onclick = () => {
+      video.muted = !video.muted;
+      muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
+      volumeBar.value = video.muted ? 0 : video.volume;
+    };
 
-  volumeBar.oninput = () => {
-    video.volume = volumeBar.value;
-    video.muted = (volumeBar.value == 0);
-    muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
-  };
+    volumeBar.oninput = () => {
+      video.volume = volumeBar.value;
+      video.muted = (volumeBar.value == 0);
+      muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
+    };
 
-  fullscreenBtn.onclick = () => {
-    if (!document.fullscreenElement) {
-      previewModal.classList.add('fullscreen');
-      previewModal.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-      previewModal.classList.remove('fullscreen');
-    }
-  };
+    fullscreenBtn.onclick = () => {
+      if (!document.fullscreenElement) {
+        previewModal.classList.add('fullscreen');
+        previewModal.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+        previewModal.classList.remove('fullscreen');
+      }
+    };
 
-  video.onclick = () => playPauseBtn.click();
+    video.onclick = () => playPauseBtn.click();
 
-  // Handle mobile touch events for better UX
-  video.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    playPauseBtn.click();
-  });
-}
+    video.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      playPauseBtn.click();
+    });
+  }
 
-function formatTime(seconds) {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-}
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
 
   function closePreviewModal() {
     const video = document.getElementById('videoPlayer');
@@ -1561,7 +1575,7 @@ function formatTime(seconds) {
     const chunk = file.slice(startByte, endByte);
     
     const formData = new FormData();
-    formData.append('upload_files[]', chunk);
+    formData.append('upload_files[]', chunk, file.name); // Set filename explicitly
     formData.append('file_name', file.name);
     formData.append('chunk_start', startByte);
     formData.append('chunk_end', endByte - 1);
