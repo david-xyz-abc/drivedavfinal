@@ -1452,10 +1452,12 @@ html, body {
     selectedFolder = folderName;
     document.getElementById('btnDeleteFolder').style.display = 'flex';
     document.getElementById('btnRenameFolder').style.display = 'flex';
+    log_debug("Selected folder: " + folderName); // Debug log
   }
 
   function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
+    log_debug("Navigating to folder: " + folderPath); // Debug log
     window.location.href = '/selfhostedgdrive/explorer.php?folder=' + encodeURIComponent(folderPath);
   }
 
@@ -1646,6 +1648,7 @@ html, body {
 
   function downloadFile(fileURL) {
     console.log("Downloading: " + fileURL);
+    log_debug("Download initiated for: " + fileURL); // Debug log
     const a = document.createElement('a');
     a.href = fileURL;
     a.download = '';
@@ -1667,6 +1670,7 @@ html, body {
 
   function openPreviewModal(fileURL, fileName) {
     console.log("Previewing: " + fileURL);
+    log_debug("Previewing file: " + fileName); // Debug log
     const previewModal = document.getElementById('previewModal');
     const videoContainer = document.getElementById('videoPlayerContainer');
     const imageContainer = document.getElementById('imagePreviewContainer');
@@ -1844,8 +1848,13 @@ html, body {
   const gridToggleBtn = document.getElementById('gridToggleBtn');
   const themeToggleBtn = document.getElementById('themeToggleBtn');
 
-  uploadBtn.addEventListener('click', () => fileInput.click());
+  uploadBtn.addEventListener('click', () => {
+    log_debug("Upload button clicked"); // Debug log
+    fileInput.click();
+  });
+
   fileInput.addEventListener('change', () => {
+    log_debug("File input changed, files selected: " + (fileInput.files.length > 0 ? fileInput.files.length : "None")); // Debug log
     if (fileInput.files.length) startUpload(fileInput.files);
   });
 
@@ -1861,6 +1870,7 @@ html, body {
     e.preventDefault();
     dropZone.classList.remove('active');
     const files = e.dataTransfer.files;
+    log_debug("Files dropped: " + (files.length > 0 ? files.length : "None")); // Debug log
     if (files.length > 0) startUpload(files);
   });
 
