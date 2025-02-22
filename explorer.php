@@ -2,7 +2,7 @@
 session_start();
 
 // Debug log setup with toggle
-define('DEBUG', false); // Set to false unless debugging
+define('DEBUG', false);
 $debug_log = '/var/www/html/selfhostedgdrive/debug.log';
 function log_debug($message) {
     if (DEBUG) {
@@ -57,7 +57,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     $fileSize = filesize($filePath);
     $fileName = basename($filePath);
 
-    // Define MIME types with fallback
     $mime_types = [
         'pdf' => 'application/pdf',
         'png' => 'image/png',
@@ -207,10 +206,10 @@ function getDirSize($dir) {
 }
 
 $totalStorage = 10 * 1024 * 1024 * 1024; // 10 GB in bytes (configurable)
-$usedStorage = getDirSize($baseDir); // Size in bytes
-$usedStorageGB = round($usedStorage / (1024 * 1024 * 1024), 2); // Convert to GB
-$totalStorageGB = round($totalStorage / (1024 * 1024 * 1024), 2); // Convert to GB
-$storagePercentage = round(($usedStorage / $totalStorage) * 100, 2); // Percentage
+$usedStorage = getDirSize($baseDir);
+$usedStorageGB = round($usedStorage / (1024 * 1024 * 1024), 2);
+$totalStorageGB = round($totalStorage / (1024 * 1024 * 1024), 2);
+$storagePercentage = round(($usedStorage / $totalStorage) * 100, 2);
 
 /************************************************
  * 3. Create Folder
@@ -702,6 +701,12 @@ html, body {
   gap: 8px;
 }
 
+.file-list.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
+}
+
 .file-row {
   display: flex;
   align-items: center;
@@ -713,15 +718,51 @@ html, body {
   position: relative;
 }
 
+.file-list.grid-view .file-row {
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  height: 180px;
+  text-align: center;
+  overflow: hidden;
+}
+
 .file-row:hover {
   box-shadow: 0 4px 8px rgba(0,0,0,0.3);
   transform: translateX(5px);
+}
+
+.file-list.grid-view .file-row:hover {
+  transform: scale(1.05);
+  translate: 0;
 }
 
 .file-icon {
   font-size: 20px;
   margin-right: 10px;
   flex-shrink: 0;
+}
+
+.file-list.grid-view .file-icon {
+  font-size: 40px;
+  margin: 0 0 10px 0;
+}
+
+.file-preview {
+  display: none;
+}
+
+.file-list.grid-view .file-preview {
+  display: block;
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.file-list.grid-view .file-icon:not(.no-preview) {
+  display: none;
 }
 
 .file-name {
@@ -733,12 +774,35 @@ html, body {
   cursor: pointer;
 }
 
+.file-list.grid-view .file-name {
+  margin: 0;
+  font-size: 14px;
+  white-space: normal;
+  word-wrap: break-word;
+  max-height: 40px;
+  overflow: hidden;
+}
+
 .file-name:hover { border-bottom: 1px solid var(--accent-red); }
+
+.file-list.grid-view .file-name:hover { border-bottom: none; }
 
 .file-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.file-list.grid-view .file-actions {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.file-list.grid-view .file-row:hover .file-actions {
+  opacity: 1;
 }
 
 .file-actions button {
@@ -995,6 +1059,22 @@ html, body {
     right: 10px;
     font-size: 25px;
   }
+
+  .file-list.grid-view {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+
+  .file-list.grid-view .file-row {
+    height: 150px;
+  }
+
+  .file-list.grid-view .file-preview {
+    height: 100px;
+  }
+
+  .file-list.grid-view .file-icon {
+    font-size: 30px;
+  }
 }
 
 #imagePreviewContainer {
@@ -1180,6 +1260,9 @@ html, body {
               <i class="fas fa-cloud-upload-alt"></i>
             </button>
           </form>
+          <button type="button" class="btn" id="gridToggleBtn" title="Toggle Grid View" style="width:36px; height:36px;">
+            <i class="fas fa-th"></i>
+          </button>
           <button type="button" class="btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme" style="width:36px; height:36px;">
             <i class="fas fa-moon"></i>
           </button>
@@ -1194,15 +1277,21 @@ html, body {
       </div>
       <div class="content-inner">
         <div id="dropZone">Drop files here to upload</div>
-        <div class="file-list">
+        <div class="file-list" id="fileList">
           <?php foreach ($files as $fileName): ?>
-            <?php $relativePath = $currentRel . '/' . $fileName;
-                  $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
-                  $iconClass = getIconClass($fileName);
-                  $canPreview = (isImage($fileName) || isVideo($fileName));
-                  log_debug("File URL for $fileName: $fileURL"); ?>
+            <?php 
+              $relativePath = $currentRel . '/' . $fileName;
+              $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
+              $iconClass = getIconClass($fileName);
+              $canPreview = (isImage($fileName) || isVideo($fileName));
+              $isImageFile = isImage($fileName);
+              log_debug("File URL for $fileName: $fileURL");
+            ?>
             <div class="file-row">
-              <i class="<?php echo $iconClass; ?> file-icon"></i>
+              <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile ? ' no-preview' : ''; ?>"></i>
+              <?php if ($isImageFile): ?>
+                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview">
+              <?php endif; ?>
               <div class="file-name"
                    title="<?php echo htmlspecialchars($fileName); ?>"
                    onclick="<?php echo $canPreview ? "openPreviewModal('$fileURL','".addslashes($fileName)."')" : "downloadFile('$fileURL')"; ?>">
@@ -1601,6 +1690,8 @@ html, body {
   const cancelUploadBtn = document.getElementById('cancelUploadBtn');
   const dropZone = document.getElementById('dropZone');
   const mainContent = document.querySelector('.main-content');
+  const fileList = document.getElementById('fileList');
+  const gridToggleBtn = document.getElementById('gridToggleBtn');
 
   uploadBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
@@ -1713,6 +1804,19 @@ html, body {
     themeToggleBtn.querySelector('i').classList.toggle('fa-sun', isLightMode);
     localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
   });
+
+  // Grid View Toggle
+  let isGridView = false;
+  gridToggleBtn.addEventListener('click', () => {
+    isGridView = !isGridView;
+    fileList.classList.toggle('grid-view', isGridView);
+    gridToggleBtn.querySelector('i').classList.toggle('fa-th', isGridView);
+    gridToggleBtn.querySelector('i').classList.toggle('fa-list', !isGridView);
+    gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
+  });
+
+  // Set initial icon for grid toggle button
+  gridToggleBtn.querySelector('i').classList.add('fa-th');
 </script>
 </body>
 </html>
