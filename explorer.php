@@ -1449,13 +1449,13 @@ html, body {
     overlay.classList.toggle('show');
   }
 
-  // Folder navigation (single click instead of double-click)
+  // Folder navigation (single click from old code)
   function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
     window.location.href = '/selfhostedgdrive/explorer.php?folder=' + encodeURIComponent(folderPath);
   }
 
-  // Dialog functions
+  // Dialog functions (from old code, with color updates)
   function showPrompt(message, defaultValue, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
@@ -1465,6 +1465,7 @@ html, body {
     const msgEl = document.createElement('div');
     msgEl.textContent = message;
     msgEl.style.marginBottom = '10px';
+    msgEl.style.color = 'var(--text-color)';
     dialogMessage.appendChild(msgEl);
     const inputField = document.createElement('input');
     inputField.type = 'text';
@@ -1480,11 +1481,13 @@ html, body {
     const okBtn = document.createElement('button');
     okBtn.className = 'dialog-button';
     okBtn.textContent = 'OK';
+    okBtn.style.color = 'var(--text-color)';
     okBtn.onclick = () => { closeDialog(); if (callback) callback(inputField.value); };
     dialogButtons.appendChild(okBtn);
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'dialog-button';
     cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.color = 'var(--text-color)';
     cancelBtn.onclick = () => { closeDialog(); if (callback) callback(null); };
     dialogButtons.appendChild(cancelBtn);
     dialogModal.classList.add('show');
@@ -1499,10 +1502,12 @@ html, body {
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
     dialogMessage.textContent = message;
+    dialogMessage.style.color = 'var(--text-color)';
     dialogButtons.innerHTML = '';
     const okBtn = document.createElement('button');
     okBtn.className = 'dialog-button';
     okBtn.textContent = 'OK';
+    okBtn.style.color = 'var(--text-color)';
     okBtn.onclick = () => { closeDialog(); if (callback) callback(); };
     dialogButtons.appendChild(okBtn);
     dialogModal.classList.add('show');
@@ -1513,21 +1518,24 @@ html, body {
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
     dialogMessage.textContent = message;
+    dialogMessage.style.color = 'var(--text-color)';
     dialogButtons.innerHTML = '';
     const yesBtn = document.createElement('button');
     yesBtn.className = 'dialog-button';
     yesBtn.textContent = 'Yes';
+    yesBtn.style.color = 'var(--text-color)';
     yesBtn.onclick = () => { closeDialog(); if (onYes) onYes(); };
     dialogButtons.appendChild(yesBtn);
     const noBtn = document.createElement('button');
     noBtn.className = 'dialog-button';
     noBtn.textContent = 'No';
+    noBtn.style.color = 'var(--text-color)';
     noBtn.onclick = () => { closeDialog(); if (onNo) onNo(); };
     dialogButtons.appendChild(noBtn);
     dialogModal.classList.add('show');
   }
 
-  // Folder and file actions
+  // Folder and file actions (from old code)
   function createFolder() {
     showPrompt("Enter new folder name:", "", function(folderName) {
       if (folderName && folderName.trim() !== "") {
@@ -1826,7 +1834,7 @@ html, body {
     nextBtn.disabled = previewFiles.length <= 1;
   }
 
-  // Upload functionality
+  // Upload functionality (from old code, with single-click fix)
   const uploadForm = document.getElementById('uploadForm');
   const fileInput = document.getElementById('fileInput');
   const uploadBtn = document.getElementById('uploadBtn');
@@ -1853,6 +1861,7 @@ html, body {
   }
 
   uploadBtn.addEventListener('click', triggerFileInput);
+  fileInput.addEventListener('change', handleFileSelect);
 
   mainContent.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -1951,7 +1960,7 @@ html, body {
     }
   });
 
-  // Grid view toggle
+  // Grid view toggle (from recent updates)
   function toggleGridView() {
     isGridView = !isGridView;
     fileList.classList.toggle('grid-view', isGridView);
@@ -1961,7 +1970,7 @@ html, body {
     gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
   }
 
-  // Theme toggle
+  // Theme toggle (from recent updates)
   function toggleTheme() {
     document.body.classList.toggle('light-mode');
     const isLightMode = document.body.classList.contains('light-mode');
@@ -1971,7 +1980,7 @@ html, body {
     localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
   }
 
-  // Initialize theme and grid view
+  // Initialize theme and grid view (from recent updates)
   const body = document.body;
   const savedTheme = localStorage.getItem('theme') || 'dark';
   if (savedTheme === 'light') {
