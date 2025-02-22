@@ -1375,7 +1375,7 @@ html, body {
             <div class="file-row" onclick="openPreviewModal('<?php echo htmlspecialchars($fileURL); ?>', '<?php echo addslashes($fileName); ?>')">
               <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? '' : ' no-preview'; ?>"></i>
               <?php if ($isImageFile): ?>
-                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy" style="display: none;">
+                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
               <?php elseif ($isVideoFile): ?>
                 <!-- No preview in list view, just icon -->
               <?php endif; ?>
@@ -1661,14 +1661,18 @@ html, body {
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
 
+    // Clear all preview containers
+    videoContainer.style.display = 'none';
+    imageContainer.style.display = 'none';
+    imageContainer.innerHTML = ''; // Clear image content
+    iconContainer.style.display = 'none';
+    iconContainer.innerHTML = ''; // Clear icon content
+    videoPlayer.pause();
+    videoPlayer.src = ''; // Reset video source
+
     // Populate previewable files
     previewFiles = <?php echo json_encode($previewableFiles); ?>;
     currentPreviewIndex = previewFiles.findIndex(file => file.name === fileName);
-
-    videoContainer.style.display = 'none';
-    imageContainer.style.display = 'none';
-    iconContainer.style.display = 'none';
-    iconContainer.innerHTML = '';
 
     let file = previewFiles.find(f => f.name === fileName);
     if (file.type === 'image') {
