@@ -218,82 +218,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_folder'])) {
  * 4. Upload Files
  ************************************************/
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
-    $chunkStart = isset($_POST['chunk_start']) ? (int)$_POST['chunk_start'] : 0;
-    $chunkEnd = isset($_POST['chunk_end']) ? (int)$_POST['chunk_end'] : 0;
-    $totalSize = isset($_POST['total_size']) ? (int)$_POST['total_size'] : 0;
-    $fileName = $_POST['file_name'] ?? '';
-
-    if ($fileName && isset($_FILES['upload_files']['tmp_name'])) {
-        $tmpPath = $_FILES['upload_files']['tmp_name'];
-        $dest = $currentDir . '/' . basename($fileName);
-        
-        // Create or append to a temporary file
-        $tempFile = $dest . '.part';
-        $input = fopen($tmpPath, 'rb');
-        $output = fopen($tempFile, 'ab'); // Append mode
-        if ($input && $output) {
-            fseek($output, $chunkStart);
-            while (!feof($input)) {
-                fwrite($output, fread($input, 8192)); // Read/write in 8KB chunks
-            }
-            fclose($input);
-            fclose($output);
+    foreach ($_FILES['upload_files']['name'] as $i => $fname) {
+        if ($_FILES['upload_files']['error'][$i] === UPLOAD_ERR_OK) {
+            $tmpPath = $_FILES['upload_files']['tmp_name'][$i];
+            $dest = $currentDir . '/' . basename($fname);
             
-            // Check if this is the last chunk
-            if ($chunkEnd >= $totalSize - 1) {
-                rename($tempFile, $dest); // Finalize file
+            // Use streams for large files to avoid memory issues
+            $input = fopen($tmpPath, 'rb');
+            $output = fopen($dest, 'wb');
+            if ($input && $output) {
+                while (!feof($input)) {
+                    $data = fread($input, 8192); // Read in 8KB chunks
+                    if ($data === false) {
+                        log_debug("Failed to read chunk for $fname");
+                        $_SESSION['error'] = "Failed to read uploaded file: $fname";
+                        fclose($input);
+                        fclose($output);
+                        unlink($dest);
+                        continue 2;
+                    }
+                    if (fwrite($output, $data) === false) {
+                        log_debug("Failed to write chunk for $fname");
+                        $_SESSION['error'] = "Failed to write uploaded file: $fname";
+                        fclose($input);
+                        fclose($output);
+                        unlink($dest);
+                        continue 2;
+                    }
+                }
+                fclose($input);
+                fclose($output);
                 chown($dest, 'www-data');
                 chgrp($dest, 'www-data');
                 chmod($dest, 0664);
-                log_debug("Uploaded file (chunked): $dest");
+                log_debug("Uploaded file: $dest");
+            } else {
+                log_debug("Failed to open file streams for $fname");
+                $_SESSION['error'] = "Failed to process uploaded file: $fname";
+                continue;
             }
         } else {
-            log_debug("Failed to open file streams for $fileName");
-            $_SESSION['error'] = "Failed to process uploaded file: $fileName";
-        }
-    } else {
-        // Handle regular uploads (non-chunked) as before
-        foreach ($_FILES['upload_files']['name'] as $i => $fname) {
-            if ($_FILES['upload_files']['error'][$i] === UPLOAD_ERR_OK) {
-                $tmpPath = $_FILES['upload_files']['tmp_name'][$i];
-                $dest = $currentDir . '/' . basename($fname);
-                
-                $input = fopen($tmpPath, 'rb');
-                $output = fopen($dest, 'wb');
-                if ($input && $output) {
-                    while (!feof($input)) {
-                        fwrite($output, fread($input, 8192));
-                    }
-                    fclose($input);
-                    fclose($output);
-                    chown($dest, 'www-data');
-                    chgrp($dest, 'www-data');
-                    chmod($dest, 0664);
-                    log_debug("Uploaded file: $dest");
-                } else {
-                    log_debug("Failed to open file streams for $fname");
-                    $_SESSION['error'] = "Failed to process uploaded file: $fname";
-                }
-            } else {
-                $errorMsg = match ($_FILES['upload_files']['error'][$i]) {
-                    UPLOAD_ERR_INI_SIZE => "File too large (exceeds upload_max_filesize)",
-                    UPLOAD_ERR_FORM_SIZE => "File too large (exceeds form max size)",
-                    UPLOAD_ERR_PARTIAL => "File upload was partial",
-                    UPLOAD_ERR_NO_FILE => "No file was uploaded",
-                    UPLOAD_ERR_NO_TMP_DIR => "Missing temporary directory",
-                    UPLOAD_ERR_CANT_WRITE => "Failed to write file to disk",
-                    UPLOAD_ERR_EXTENSION => "File upload stopped by extension",
-                    default => "Unknown upload error"
-                };
-                log_debug("Upload error for $fname: $errorMsg");
-                $_SESSION['error'] = "Upload error for $fname: $errorMsg";
-            }
+            $errorMsg = match ($_FILES['upload_files']['error'][$i]) {
+                UPLOAD_ERR_INI_SIZE => "File too large (exceeds upload_max_filesize)",
+                UPLOAD_ERR_FORM_SIZE => "File too large (exceeds form max size)",
+                UPLOAD_ERR_PARTIAL => "File upload was partial",
+                UPLOAD_ERR_NO_FILE => "No file was uploaded",
+                UPLOAD_ERR_NO_TMP_DIR => "Missing temporary directory",
+                UPLOAD_ERR_CANT_WRITE => "Failed to write file to disk",
+                UPLOAD_ERR_EXTENSION => "File upload stopped by extension",
+                default => "Unknown upload error"
+            };
+            log_debug("Upload error for $fname: $errorMsg");
+            $_SESSION['error'] = "Upload error for $fname: $errorMsg";
         }
     }
     header("Location: /selfhostedgdrive/explorer.php?folder=" . urlencode($currentRel), true, 302);
     exit;
 }
-
 /************************************************
  * 5. Delete an item (folder or file)
  ************************************************/
@@ -1443,36 +1424,70 @@ function isVideo($fileName) {
   });
 
   function startUpload(fileList) {
-    const formData = new FormData(uploadForm);
-    formData.delete("upload_files[]");
-    for (let i = 0; i < fileList.length; i++) {
-        formData.append("upload_files[]", fileList[i]);
+    for (let file of fileList) {
+      uploadChunk(file, 0);
     }
-    uploadProgressContainer.style.display = 'block';
-    uploadProgressBar.style.width = '0%';
-    uploadProgressPercent.textContent = '0%';
-    const xhr = new XMLHttpRequest();
-    currentXhr = xhr;
-    xhr.open('POST', uploadForm.action, true);
-    xhr.timeout = 3600000; // 1 hour timeout for large files
-    xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-            let percent = Math.round((e.loaded / e.total) * 100);
-            uploadProgressBar.style.width = percent + '%';
-            uploadProgressPercent.textContent = `${percent}% (${(e.loaded / 1024 / 1024).toFixed(2)}MB / ${(e.total / 1024 / 1024).toFixed(2)}MB)`;
-        }
-    };
-    xhr.onload = () => {
-        if (xhr.status === 200) {
-            location.reload();
-        } else {
-            showAlert(`Upload failed. Status: ${xhr.status} - ${xhr.statusText}`);
-        }
-    };
-    xhr.onerror = () => showAlert('Upload failed. Could not connect to server.');
-    xhr.ontimeout = () => showAlert('Upload timed out. Please try again or split the file into smaller parts.');
-    xhr.send(formData);
   }
+
+  function uploadChunk(file, startByte) {
+    const chunkSize = 10 * 1024 * 1024; // 10MB chunks
+    const endByte = Math.min(startByte + chunkSize, file.size);
+    const chunk = file.slice(startByte, endByte);
+    
+    const formData = new FormData();
+    formData.append('upload_files[]', chunk);
+    formData.append('file_name', file.name);
+    formData.append('chunk_start', startByte);
+    formData.append('chunk_end', endByte - 1);
+    formData.append('total_size', file.size);
+
+    uploadProgressContainer.style.display = 'block';
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    function attemptUpload() {
+      const xhr = new XMLHttpRequest();
+      currentXhr = xhr;
+      xhr.open('POST', uploadForm.action, true);
+      xhr.timeout = 3600000; // 1 hour timeout
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          let totalPercent = Math.round((startByte + e.loaded) / file.size * 100);
+          uploadProgressBar.style.width = totalPercent + '%';
+          uploadProgressPercent.textContent = `${totalPercent}% (${(startByte + e.loaded) / 1024 / 1024}MB / ${file.size / 1024 / 1024}MB)`;
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          if (endByte < file.size) {
+            uploadChunk(file, endByte); // Upload next chunk
+          } else {
+            showAlert('Upload completed successfully.');
+            location.reload();
+          }
+        } else {
+          handleUploadError(xhr, attempts, maxAttempts);
+        }
+      };
+      xhr.onerror = () => handleUploadError(xhr, attempts, maxAttempts);
+      xhr.ontimeout = () => handleUploadError(xhr, attempts, maxAttempts);
+      xhr.send(formData);
+    }
+
+    function handleUploadError(xhr, attempts, maxAttempts) {
+      attempts++;
+      if (attempts < maxAttempts) {
+        showAlert(`Upload failed for chunk (Attempt ${attempts}). Retrying in 5 seconds... Status: ${xhr.status} - ${xhr.statusText}`);
+        setTimeout(attemptUpload, 5000); // Retry after 5 seconds
+      } else {
+        showAlert(`Upload failed after ${maxAttempts} attempts. Status: ${xhr.status} - ${xhr.statusText}. Please check server logs or network connection.`);
+        uploadProgressContainer.style.display = 'none';
+      }
+    }
+
+    attemptUpload();
+  }
+
   cancelUploadBtn.addEventListener('click', () => {
     if (currentXhr) {
       currentXhr.abort();
