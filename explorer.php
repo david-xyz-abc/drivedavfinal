@@ -74,7 +74,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
     $mime = $mime_types[$ext] ?? mime_content_type($filePath) ?? 'application/octet-stream';
 
-    // Serve file
     header("Content-Type: $mime");
     header("Accept-Ranges: bytes");
     header("Content-Length: $fileSize");
@@ -89,9 +88,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
         exit;
     }
 
-    ob_clean(); // Clear output buffer once
+    ob_clean();
 
-    // Handle range requests
     if (isset($_SERVER['HTTP_RANGE'])) {
         $range = $_SERVER['HTTP_RANGE'];
         if (preg_match('/bytes=(\d+)-(\d*)?/', $range, $matches)) {
@@ -114,7 +112,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
             fseek($fp, $start);
             $remaining = $length;
             while ($remaining > 0 && !feof($fp) && !connection_aborted()) {
-                $chunk = min($remaining, 8192); // Revert to 8KB chunks
+                $chunk = min($remaining, 8192);
                 echo fread($fp, $chunk);
                 flush();
                 $remaining -= $chunk;
@@ -128,7 +126,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
         }
     } else {
         while (!feof($fp) && !connection_aborted()) {
-            echo fread($fp, 8192); // Revert to 8KB chunks
+            echo fread($fp, 8192);
             flush();
         }
     }
@@ -189,6 +187,30 @@ if ($currentDir === false || strpos($currentDir, $baseDir) !== 0) {
     $currentDir = $baseDir;
     $currentRel = 'Home';
 }
+
+/************************************************
+ * Calculate Storage Usage
+ ************************************************/
+function getDirSize($dir) {
+    $size = 0;
+    $items = scandir($dir);
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') continue;
+        $path = $dir . '/' . $item;
+        if (is_dir($path)) {
+            $size += getDirSize($path);
+        } else {
+            $size += filesize($path);
+        }
+    }
+    return $size;
+}
+
+$totalStorage = 10 * 1024 * 1024 * 1024; // 10 GB in bytes (configurable)
+$usedStorage = getDirSize($baseDir); // Size in bytes
+$usedStorageGB = round($usedStorage / (1024 * 1024 * 1024), 2); // Convert to GB
+$totalStorageGB = round($totalStorage / (1024 * 1024 * 1024), 2); // Convert to GB
+$storagePercentage = round(($usedStorage / $totalStorage) * 100, 2); // Percentage
 
 /************************************************
  * 3. Create Folder
@@ -1067,6 +1089,41 @@ html, body {
 }
 
 #dropZone.active { display: flex; }
+
+/* Storage Indicator Styles */
+#storageIndicator {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 200px;
+  background: var(--content-bg);
+  border: 1px solid var(--border-color);
+  padding: 10px;
+  border-radius: 4px;
+  z-index: 9999;
+  font-size: 12px;
+  color: var(--text-color);
+}
+
+#storageIndicator p {
+  margin: 0 0 5px 0;
+  text-align: center;
+}
+
+#storageBar {
+  width: 100%;
+  height: 10px;
+  background: var(--border-color);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+#storageProgress {
+  height: 100%;
+  background: var(--accent-red);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
   </style>
 </head>
 <body>
@@ -1195,7 +1252,15 @@ html, body {
     </div>
   </div>
 
- <script>
+  <!-- Storage Indicator -->
+  <div id="storageIndicator">
+    <p><?php echo "$usedStorageGB GB used of $totalStorageGB GB"; ?></p>
+    <div id="storageBar">
+      <div id="storageProgress" style="width: <?php echo $storagePercentage; ?>%;"></div>
+    </div>
+  </div>
+
+  <script>
   let selectedFolder = null;
   let currentXhr = null;
 
