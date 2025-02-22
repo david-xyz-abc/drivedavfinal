@@ -1660,6 +1660,7 @@ html, body {
     const videoPlayer = document.getElementById('videoPlayer');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
+    const previewClose = document.getElementById('previewClose');
 
     // Clear all preview containers
     videoContainer.style.display = 'none';
@@ -1686,17 +1687,20 @@ html, body {
           img.src = URL.createObjectURL(blob);
           imageContainer.appendChild(img);
           imageContainer.style.display = 'flex';
+          previewClose.style.display = 'none'; // Hide close button for images
         })
         .catch(error => showAlert('Preview error: ' + error.message));
     } else if (file.type === 'video') {
       videoPlayer.src = fileURL;
       videoContainer.style.display = 'block';
+      previewClose.style.display = 'block'; // Show close button for videos
       setupVideoPlayer(fileURL, fileName);
     } else if (file.type === 'other') {
       const icon = document.createElement('i');
       icon.className = file.icon;
       iconContainer.appendChild(icon);
       iconContainer.style.display = 'flex';
+      previewClose.style.display = 'block'; // Show close button for others
     } else {
       downloadFile(fileURL);
       return;
@@ -1704,6 +1708,13 @@ html, body {
 
     previewModal.style.display = 'flex';
     updateNavigationButtons();
+
+    // Add click-outside-to-close functionality for images
+    previewModal.onclick = function(e) {
+      if (e.target === previewModal && file.type === 'image') {
+        closePreviewModal();
+      }
+    };
   }
   window.openPreviewModal = openPreviewModal;
 
@@ -1794,6 +1805,8 @@ html, body {
     document.getElementById('previewModal').style.display = 'none';
     if (document.fullscreenElement) document.exitFullscreen();
     document.getElementById('previewModal').classList.remove('fullscreen');
+    document.getElementById('previewModal').onclick = null; // Remove event listener
+    document.getElementById('previewClose').style.display = 'block'; // Reset close button visibility
     previewFiles = [];
     currentPreviewIndex = -1;
   }
@@ -1851,15 +1864,16 @@ html, body {
 
   function startUpload(fileList) {
     for (let file of fileList) {
-      uploadChunk(file, 0, file.name);
+      let totalUploaded = 0; // Track total bytes uploaded for this file
+      uploadChunk(file, 0, file.name, totalUploaded);
     }
   }
 
-  function uploadChunk(file, startByte, fileName) {
-    const chunkSize = 10 * 1024 * 1024;
+  function uploadChunk(file, startByte, fileName, totalUploaded) {
+    const chunkSize = 10 * 1024 * 1024; // 10 MB chunks
     const endByte = Math.min(startByte + chunkSize, file.size);
     const chunk = file.slice(startByte, endByte);
-    
+
     const formData = new FormData();
     formData.append('upload_files[]', chunk, file.name);
     formData.append('file_name', file.name);
@@ -1879,17 +1893,21 @@ html, body {
       xhr.timeout = 3600000;
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          let totalPercent = Math.round((startByte + e.loaded) / file.size * 10) / 10; // One decimal place
+          const chunkUploaded = e.loaded; // Bytes uploaded in this chunk
+          const totalBytesUploaded = totalUploaded + chunkUploaded;
+          const totalPercent = Math.round((totalBytesUploaded / file.size) * 100 * 10) / 10; // One decimal place
           uploadProgressBar.style.width = totalPercent + '%';
           uploadProgressPercent.textContent = `${totalPercent}% - Uploading ${fileName}`;
         }
       };
       xhr.onload = () => {
         if (xhr.status === 200) {
+          totalUploaded += (endByte - startByte); // Update total bytes uploaded
           if (endByte < file.size) {
-            uploadChunk(file, endByte, fileName);
+            uploadChunk(file, endByte, fileName, totalUploaded);
           } else {
             showAlert('Upload completed successfully.');
+            uploadProgressContainer.style.display = 'none';
             location.reload();
           }
         } else {
