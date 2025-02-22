@@ -391,7 +391,7 @@ function isVideo($fileName) {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"/>
- <style>
+<style>
   :root {
     --background: #121212;
     --text-color: #fff;
@@ -698,14 +698,17 @@ function isVideo($fileName) {
     justify-content: center;
     align-items: center;
     z-index: 9998;
-    overflow: auto; /* Allow scrolling if content exceeds screen */
+    overflow: auto;
   }
   #previewContent {
     position: relative;
-    max-width: 90vw; /* Limit width to 90% of viewport width */
-    max-height: 90vh; /* Limit height to 90% of viewport height */
+    width: 90vw;
+    max-width: 90vw;
+    height: auto;
+    max-height: 90vh;
     background: transparent;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
   }
@@ -721,8 +724,9 @@ function isVideo($fileName) {
   #videoPlayerContainer {
     position: relative;
     width: 100%;
-    max-width: 800px; /* Cap max width */
-    max-height: 80vh; /* Ensure it fits within viewport height */
+    max-width: 800px;
+    height: auto;
+    max-height: 80vh;
     background: var(--content-bg);
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -733,10 +737,10 @@ function isVideo($fileName) {
   #videoPlayer {
     width: 100%;
     height: auto;
-    max-height: calc(80vh - 60px); /* Leave room for controls */
+    max-height: calc(80vh - 60px);
     display: block;
     background: #000;
-    object-fit: contain; /* Ensure video scales without cropping */
+    object-fit: contain;
   }
   #videoPlayerControls {
     width: 100%;
@@ -802,14 +806,18 @@ function isVideo($fileName) {
   #previewModal.fullscreen #videoPlayerContainer {
     max-width: 100vw;
     max-height: 100vh;
-    width: 100%;
-    height: 100%;
+    width: 100vw;
+    height: 100vh;
     border: none;
     border-radius: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
   }
   #previewModal.fullscreen #videoPlayer {
     max-height: 100vh;
-    height: 100%;
+    height: 100vh;
+    width: 100vw;
     object-fit: contain;
   }
   #dialogModal {
