@@ -391,7 +391,7 @@ function isVideo($fileName) {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"/>
-  <style>
+ <style>
   :root {
     --background: #121212;
     --text-color: #fff;
@@ -698,11 +698,12 @@ function isVideo($fileName) {
     justify-content: center;
     align-items: center;
     z-index: 9998;
+    overflow: auto; /* Allow scrolling if content exceeds screen */
   }
   #previewContent {
     position: relative;
-    width: 100%;
-    height: 100%;
+    max-width: 90vw; /* Limit width to 90% of viewport width */
+    max-height: 90vh; /* Limit height to 90% of viewport height */
     background: transparent;
     display: flex;
     align-items: center;
@@ -719,23 +720,25 @@ function isVideo($fileName) {
   }
   #videoPlayerContainer {
     position: relative;
-    width: 90%;
-    max-width: 800px;
+    width: 100%;
+    max-width: 800px; /* Cap max width */
+    max-height: 80vh; /* Ensure it fits within viewport height */
     background: var(--content-bg);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
   #videoPlayer {
     width: 100%;
     height: auto;
+    max-height: calc(80vh - 60px); /* Leave room for controls */
     display: block;
     background: #000;
+    object-fit: contain; /* Ensure video scales without cropping */
   }
   #videoPlayerControls {
-    position: absolute;
-    bottom: 0;
-    left: 0;
     width: 100%;
     background: rgba(0, 0, 0, 0.8);
     display: flex;
@@ -743,6 +746,7 @@ function isVideo($fileName) {
     padding: 10px;
     box-sizing: border-box;
     gap: 10px;
+    flex-shrink: 0;
   }
   .player-btn {
     background: var(--button-bg);
@@ -784,6 +788,8 @@ function isVideo($fileName) {
   #imagePreviewContainer {
     width: 100%;
     height: 100%;
+    max-width: 90vw;
+    max-height: 90vh;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -794,13 +800,15 @@ function isVideo($fileName) {
     object-fit: contain;
   }
   #previewModal.fullscreen #videoPlayerContainer {
+    max-width: 100vw;
+    max-height: 100vh;
     width: 100%;
     height: 100%;
-    max-width: none;
     border: none;
     border-radius: 0;
   }
   #previewModal.fullscreen #videoPlayer {
+    max-height: 100vh;
     height: 100%;
     object-fit: contain;
   }
