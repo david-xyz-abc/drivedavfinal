@@ -937,7 +937,7 @@ html, body {
   justify-content: center;
   align-items: center;
   z-index: 9998;
-  overflow: auto;
+  overflow: hidden; /* Prevent scrolling */
 }
 
 #previewContent {
@@ -962,6 +962,8 @@ html, body {
   padding: 0;
   max-width: 100vw;
   max-height: 100vh;
+  width: auto;
+  height: auto;
 }
 
 #previewNav {
@@ -1198,21 +1200,23 @@ html, body {
 }
 
 #imagePreviewContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
   max-width: 100vw;
   max-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden; /* Ensure no overflow */
 }
 
 #imagePreviewContainer img {
   max-width: 100%;
   max-height: 100%;
-  object-fit: contain;
   width: auto;
   height: auto;
+  object-fit: contain; /* Ensure the image fits within the container */
+  display: block;
 }
 
 #dialogModal {
@@ -1447,6 +1451,7 @@ html, body {
   let currentXhr = null;
   let previewFiles = []; // Array to store previewable files
   let currentPreviewIndex = -1;
+  let isLoadingImage = false; // Flag to prevent overlapping image loads
 
   function toggleSidebar() {
     const sb = document.getElementById('sidebar');
@@ -1662,6 +1667,7 @@ html, body {
   ?>
 
   function openPreviewModal(fileURL, fileName) {
+    if (isLoadingImage) return; // Prevent overlapping loads
     console.log("Previewing: " + fileURL);
     const previewModal = document.getElementById('previewModal');
     const videoContainer = document.getElementById('videoPlayerContainer');
@@ -1676,7 +1682,7 @@ html, body {
     // Clear all preview containers
     videoContainer.style.display = 'none';
     imageContainer.style.display = 'none';
-    imageContainer.innerHTML = ''; // Clear image content
+    imageContainer.innerHTML = ''; // Clear previous images
     iconContainer.style.display = 'none';
     iconContainer.innerHTML = ''; // Clear icon content
     videoPlayer.pause();
@@ -1689,6 +1695,7 @@ html, body {
 
     let file = previewFiles.find(f => f.name === fileName);
     if (file.type === 'image') {
+      isLoadingImage = true;
       fetch(fileURL)
         .then(response => {
           if (!response.ok) throw new Error('Preview failed: ' + response.status);
@@ -1702,7 +1709,10 @@ html, body {
           previewClose.style.display = 'none'; // Hide close button for images
           previewContent.classList.add('image-preview'); // Remove box styling
         })
-        .catch(error => showAlert('Preview error: ' + error.message));
+        .catch(error => showAlert('Preview error: ' + error.message))
+        .finally(() => {
+          isLoadingImage = false; // Reset flag after loading
+        });
     } else if (file.type === 'video') {
       videoPlayer.src = fileURL;
       videoContainer.style.display = 'block';
@@ -1821,13 +1831,14 @@ html, body {
     document.getElementById('previewModal').onclick = null; // Remove event listener
     document.getElementById('previewClose').style.display = 'block'; // Reset close button visibility
     document.getElementById('previewContent').classList.remove('image-preview'); // Reset class
+    isLoadingImage = false; // Reset loading flag
     previewFiles = [];
     currentPreviewIndex = -1;
   }
   window.closePreviewModal = closePreviewModal;
 
   function navigatePreview(direction) {
-    if (previewFiles.length === 0 || currentPreviewIndex === -1) return;
+    if (previewFiles.length === 0 || currentPreviewIndex === -1 || isLoadingImage) return;
 
     currentPreviewIndex += direction;
     if (currentPreviewIndex < 0) currentPreviewIndex = previewFiles.length - 1;
