@@ -1439,9 +1439,9 @@ html, body {
   let currentPreviewIndex = -1;
 
   function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
+    const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
-    sb.classList.toggle('open');
+    sidebar.classList.toggle('open');
     overlay.classList.toggle('show');
   }
   document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
@@ -1453,9 +1453,10 @@ html, body {
     document.getElementById('btnDeleteFolder').style.display = 'flex';
     document.getElementById('btnRenameFolder').style.display = 'flex';
   }
+
   function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
-    window.location.href = '/selfhostedgdrive/explorer.php?folder=' + folderPath;
+    window.location.href = '/selfhostedgdrive/explorer.php?folder=' + encodeURIComponent(folderPath);
   }
 
   function showPrompt(message, defaultValue, callback) {
@@ -1475,8 +1476,8 @@ html, body {
     inputField.style.padding = '8px';
     inputField.style.border = '1px solid var(--border-color)';
     inputField.style.borderRadius = '4px';
-    inputField.style.background = var(--content-bg);
-    inputField.style.color = var(--text-color);
+    inputField.style.background = 'var(--content-bg)';
+    inputField.style.color = 'var(--text-color)';
     inputField.style.marginBottom = '15px';
     dialogMessage.appendChild(inputField);
     const okBtn = document.createElement('button');
@@ -1491,7 +1492,11 @@ html, body {
     dialogButtons.appendChild(cancelBtn);
     dialogModal.classList.add('show');
   }
-  function closeDialog() { document.getElementById('dialogModal').classList.remove('show'); }
+
+  function closeDialog() {
+    document.getElementById('dialogModal').classList.remove('show');
+  }
+
   function showAlert(message, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
@@ -1505,6 +1510,7 @@ html, body {
     dialogButtons.appendChild(okBtn);
     dialogModal.classList.add('show');
   }
+
   function showConfirm(message, onYes, onNo) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
@@ -1527,15 +1533,15 @@ html, body {
   function createFolder() {
     showPrompt("Enter new folder name:", "", function(folderName) {
       if (folderName && folderName.trim() !== "") {
-        let form = document.createElement('form');
+        const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputCreate = document.createElement('input');
+        const inputCreate = document.createElement('input');
         inputCreate.type = 'hidden';
         inputCreate.name = 'create_folder';
         inputCreate.value = '1';
         form.appendChild(inputCreate);
-        let inputName = document.createElement('input');
+        const inputName = document.createElement('input');
         inputName.type = 'hidden';
         inputName.name = 'folder_name';
         inputName.value = folderName.trim();
@@ -1550,20 +1556,20 @@ html, body {
     if (!selectedFolder) return;
     showPrompt("Enter new folder name:", selectedFolder, function(newName) {
       if (newName && newName.trim() !== "" && newName !== selectedFolder) {
-        let form = document.createElement('form');
+        const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputAction = document.createElement('input');
+        const inputAction = document.createElement('input');
         inputAction.type = 'hidden';
         inputAction.name = 'rename_folder';
         inputAction.value = '1';
         form.appendChild(inputAction);
-        let inputOld = document.createElement('input');
+        const inputOld = document.createElement('input');
         inputOld.type = 'hidden';
         inputOld.name = 'old_folder_name';
         inputOld.value = selectedFolder;
         form.appendChild(inputOld);
-        let inputNew = document.createElement('input');
+        const inputNew = document.createElement('input');
         inputNew.type = 'hidden';
         inputNew.name = 'new_folder_name';
         inputNew.value = newName.trim();
@@ -1577,7 +1583,7 @@ html, body {
   document.getElementById('btnDeleteFolder').addEventListener('click', function() {
     if (!selectedFolder) return;
     showConfirm(`Delete folder "${selectedFolder}"?`, () => {
-      let form = document.createElement('form');
+      const form = document.createElement('form');
       form.method = 'POST';
       form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(selectedFolder);
       document.body.appendChild(form);
@@ -1596,20 +1602,20 @@ html, body {
     showPrompt("Enter new file name:", baseName, function(newBase) {
       if (newBase && newBase.trim() !== "" && newBase.trim() !== baseName) {
         let finalName = newBase.trim() + ext;
-        let form = document.createElement('form');
+        const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputAction = document.createElement('input');
+        const inputAction = document.createElement('input');
         inputAction.type = 'hidden';
         inputAction.name = 'rename_file';
         inputAction.value = '1';
         form.appendChild(inputAction);
-        let inputOld = document.createElement('input');
+        const inputOld = document.createElement('input');
         inputOld.type = 'hidden';
         inputOld.name = 'old_file_name';
         inputOld.value = fileName;
         form.appendChild(inputOld);
-        let inputNew = document.createElement('input');
+        const inputNew = document.createElement('input');
         inputNew.type = 'hidden';
         inputNew.name = 'new_file_name';
         inputNew.value = finalName;
@@ -1622,7 +1628,7 @@ html, body {
 
   function confirmFileDelete(fileName) {
     showConfirm(`Delete file "${fileName}"?`, () => {
-      let form = document.createElement('form');
+      const form = document.createElement('form');
       form.method = 'POST';
       form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(fileName);
       document.body.appendChild(form);
@@ -1828,10 +1834,30 @@ html, body {
   const mainContent = document.querySelector('.main-content');
   const fileList = document.getElementById('fileList');
   const gridToggleBtn = document.getElementById('gridToggleBtn');
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  const hamburger = document.querySelector('.hamburger');
 
+  // Ensure all buttons are properly initialized and event listeners are set
   uploadBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
     if (fileInput.files.length) startUpload(fileInput.files);
+  });
+
+  hamburger.addEventListener('click', toggleSidebar);
+
+  gridToggleBtn.addEventListener('click', () => {
+    const isGridView = fileList.classList.toggle('grid-view');
+    gridToggleBtn.querySelector('i').classList.toggle('fa-th', isGridView);
+    gridToggleBtn.querySelector('i').classList.toggle('fa-list', !isGridView);
+    gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
+  });
+
+  themeToggleBtn.addEventListener('click', () => {
+    document.body.classList.toggle('light-mode');
+    const isLightMode = document.body.classList.contains('light-mode');
+    themeToggleBtn.querySelector('i').classList.toggle('fa-moon', !isLightMode);
+    themeToggleBtn.querySelector('i').classList.toggle('fa-sun', isLightMode);
+    localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
   });
 
   mainContent.addEventListener('dragover', (e) => {
@@ -1931,7 +1957,7 @@ html, body {
     }
   });
 
-  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  // Set initial theme based on localStorage
   const body = document.body;
   const savedTheme = localStorage.getItem('theme') || 'dark';
   if (savedTheme === 'light') {
@@ -1941,25 +1967,8 @@ html, body {
     body.classList.remove('light-mode');
     themeToggleBtn.querySelector('i').classList.replace('fa-sun', 'fa-moon');
   }
-  themeToggleBtn.addEventListener('click', () => {
-    body.classList.toggle('light-mode');
-    const isLightMode = body.classList.contains('light-mode');
-    themeToggleBtn.querySelector('i').classList.toggle('fa-moon', !isLightMode);
-    themeToggleBtn.querySelector('i').classList.toggle('fa-sun', isLightMode);
-    localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
-  });
 
-  // Grid View Toggle
-  let isGridView = false;
-  gridToggleBtn.addEventListener('click', () => {
-    isGridView = !isGridView;
-    fileList.classList.toggle('grid-view', isGridView);
-    gridToggleBtn.querySelector('i').classList.toggle('fa-th', isGridView);
-    gridToggleBtn.querySelector('i').classList.toggle('fa-list', !isGridView);
-    gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
-  });
-
-  // Set initial icon for grid toggle button
+  // Set initial grid view icon
   gridToggleBtn.querySelector('i').classList.add('fa-th');
 </script>
 </body>
