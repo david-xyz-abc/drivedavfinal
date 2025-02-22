@@ -2,7 +2,7 @@
 session_start();
 
 // Debug log setup with toggle
-define('DEBUG', true); // Set to true for debugging streaming issues
+define('DEBUG', false); // Set to false unless debugging
 $debug_log = '/var/www/html/selfhostedgdrive/debug.log';
 function log_debug($message) {
     if (DEBUG) {
@@ -89,14 +89,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
         exit;
     }
 
-    // Disable output buffering for streaming
-    while (ob_get_level()) ob_end_clean();
-    ob_implicit_flush(true);
+    ob_clean(); // Clear output buffer once
 
     // Handle range requests
     if (isset($_SERVER['HTTP_RANGE'])) {
         $range = $_SERVER['HTTP_RANGE'];
-        log_debug("Range request received: $range");
         if (preg_match('/bytes=(\d+)-(\d*)?/', $range, $matches)) {
             $start = (int)$matches[1];
             $end = isset($matches[2]) && $matches[2] !== '' ? (int)$matches[2] : $fileSize - 1;
@@ -116,16 +113,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
 
             fseek($fp, $start);
             $remaining = $length;
-            $startTime = microtime(true);
             while ($remaining > 0 && !feof($fp) && !connection_aborted()) {
-                $chunk = min($remaining, 1048576); // 1MB chunks
-                $data = fread($fp, $chunk);
-                echo $data;
+                $chunk = min($remaining, 8192); // Revert to 8KB chunks
+                echo fread($fp, $chunk);
                 flush();
                 $remaining -= $chunk;
             }
-            $endTime = microtime(true);
-            log_debug("Served range $start-$end in " . ($endTime - $startTime) . " seconds");
         } else {
             log_debug("Malformed range header: $range");
             header("HTTP/1.1 416 Range Not Satisfiable");
@@ -134,14 +127,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
             exit;
         }
     } else {
-        $startTime = microtime(true);
         while (!feof($fp) && !connection_aborted()) {
-            $data = fread($fp, 1048576); // 1MB chunks
-            echo $data;
+            echo fread($fp, 8192); // Revert to 8KB chunks
             flush();
         }
-        $endTime = microtime(true);
-        log_debug("Served full file in " . ($endTime - $startTime) . " seconds");
     }
 
     fclose($fp);
@@ -1460,7 +1449,7 @@ html, body {
     const previewModal = document.getElementById('previewModal');
 
     video.src = fileURL;
-    video.preload = 'auto'; // Buffer more aggressively
+    video.preload = 'auto';
     video.load();
 
     const videoKey = `video_position_${fileName}`;
