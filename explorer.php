@@ -725,6 +725,7 @@ html, body {
   height: 180px;
   text-align: center;
   overflow: hidden;
+  position: relative;
 }
 
 .file-row:hover {
@@ -744,8 +745,14 @@ html, body {
 }
 
 .file-list.grid-view .file-icon {
-  font-size: 40px;
-  margin: 0 0 10px 0;
+  font-size: 20px; /* Smaller icon */
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 5px;
+  border-radius: 4px;
 }
 
 .file-preview {
@@ -861,17 +868,20 @@ html, body {
 .cancel-upload-btn {
   margin-top: 5px;
   padding: 6px 10px;
-  background: var(--accent-red);
+  background: linear-gradient(135deg, var(--accent-red), #b71c1c);
   border: none;
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.3s, transform 0.2s;
+  color: var(--text-color);
 }
 
 .cancel-upload-btn:hover {
-  background: #b71c1c;
+  background: linear-gradient(135deg, #b71c1c, var(--accent-red));
   transform: scale(1.05);
 }
+
+.cancel-upload-btn:active { transform: scale(0.95); }
 
 #previewModal {
   display: none;
@@ -1073,7 +1083,7 @@ html, body {
   }
 
   .file-list.grid-view .file-icon {
-    font-size: 30px;
+    font-size: 16px;
   }
 }
 
@@ -1285,12 +1295,15 @@ html, body {
               $iconClass = getIconClass($fileName);
               $canPreview = (isImage($fileName) || isVideo($fileName));
               $isImageFile = isImage($fileName);
+              $isVideoFile = isVideo($fileName);
               log_debug("File URL for $fileName: $fileURL");
             ?>
             <div class="file-row">
-              <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile ? ' no-preview' : ''; ?>"></i>
+              <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? ' no-preview' : ''; ?>"></i>
               <?php if ($isImageFile): ?>
-                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview">
+                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
+              <?php elseif ($isVideoFile): ?>
+                <img src="https://via.placeholder.com/150x120.png?text=Video" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
               <?php endif; ?>
               <div class="file-name"
                    title="<?php echo htmlspecialchars($fileName); ?>"
@@ -1715,11 +1728,11 @@ html, body {
 
   function startUpload(fileList) {
     for (let file of fileList) {
-      uploadChunk(file, 0);
+      uploadChunk(file, 0, file.name);
     }
   }
 
-  function uploadChunk(file, startByte) {
+  function uploadChunk(file, startByte, fileName) {
     const chunkSize = 10 * 1024 * 1024;
     const endByte = Math.min(startByte + chunkSize, file.size);
     const chunk = file.slice(startByte, endByte);
@@ -1732,6 +1745,7 @@ html, body {
     formData.append('total_size', file.size);
 
     uploadProgressContainer.style.display = 'block';
+    uploadProgressPercent.textContent = `0.0% - Uploading ${fileName}`;
     let attempts = 0;
     const maxAttempts = 3;
 
@@ -1742,15 +1756,15 @@ html, body {
       xhr.timeout = 3600000;
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          let totalPercent = Math.round((startByte + e.loaded) / file.size * 100);
+          let totalPercent = Math.round((startByte + e.loaded) / file.size * 10) / 10; // One decimal place
           uploadProgressBar.style.width = totalPercent + '%';
-          uploadProgressPercent.textContent = `${totalPercent}% (${(startByte + e.loaded) / 1024 / 1024}MB / ${file.size / 1024 / 1024}MB)`;
+          uploadProgressPercent.textContent = `${totalPercent}% - Uploading ${fileName}`;
         }
       };
       xhr.onload = () => {
         if (xhr.status === 200) {
           if (endByte < file.size) {
-            uploadChunk(file, endByte);
+            uploadChunk(file, endByte, fileName);
           } else {
             showAlert('Upload completed successfully.');
             location.reload();
@@ -1767,10 +1781,10 @@ html, body {
     function handleUploadError(xhr, attempts, maxAttempts) {
       attempts++;
       if (attempts < maxAttempts) {
-        showAlert(`Upload failed for chunk (Attempt ${attempts}). Retrying in 5 seconds... Status: ${xhr.status} - ${xhr.statusText}`);
+        showAlert(`Upload failed for ${fileName} (Attempt ${attempts}). Retrying in 5 seconds... Status: ${xhr.status} - ${xhr.statusText}`);
         setTimeout(attemptUpload, 5000);
       } else {
-        showAlert(`Upload failed after ${maxAttempts} attempts. Status: ${xhr.status} - ${xhr.statusText}. Please check server logs or network connection.`);
+        showAlert(`Upload failed for ${fileName} after ${maxAttempts} attempts. Status: ${xhr.status} - ${xhr.statusText}. Please check server logs or network connection.`);
         uploadProgressContainer.style.display = 'none';
       }
     }
