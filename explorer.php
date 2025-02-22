@@ -565,6 +565,36 @@ html, body {
   color: var(--text-color);
 }
 
+.storage-indicator {
+  margin-top: 20px;
+  padding: 10px;
+  background: var(--content-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-color);
+}
+
+.storage-indicator p {
+  margin: 0 0 5px 0;
+  text-align: center;
+}
+
+.storage-bar {
+  width: 100%;
+  height: 10px;
+  background: var(--border-color);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.storage-progress {
+  height: 100%;
+  background: var(--accent-red);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
 .btn {
   background: var(--button-bg);
   color: var(--text-color);
@@ -716,6 +746,7 @@ html, body {
   border-radius: 4px;
   transition: box-shadow 0.3s ease, transform 0.2s;
   position: relative;
+  cursor: pointer; /* Make entire row clickable in list view */
 }
 
 .file-list.grid-view .file-row {
@@ -726,6 +757,7 @@ html, body {
   text-align: center;
   overflow: hidden;
   position: relative;
+  cursor: pointer; /* Make entire square clickable in grid view */
 }
 
 .file-row:hover {
@@ -745,7 +777,7 @@ html, body {
 }
 
 .file-list.grid-view .file-icon {
-  font-size: 20px; /* Smaller icon */
+  font-size: 20px;
   position: absolute;
   top: 5px;
   right: 5px;
@@ -910,6 +942,37 @@ html, body {
   justify-content: center;
 }
 
+#previewNav {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 20px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+#previewNav button {
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+#previewNav button:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+#previewNav button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 #previewClose {
   position: absolute;
   top: 20px;
@@ -1070,6 +1133,12 @@ html, body {
     font-size: 25px;
   }
 
+  #previewNav button {
+    width: 30px;
+    height: 30px;
+    font-size: 16px;
+  }
+
   .file-list.grid-view {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   }
@@ -1179,41 +1248,6 @@ html, body {
 }
 
 #dropZone.active { display: flex; }
-
-/* Storage Indicator Styles */
-#storageIndicator {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  width: 200px;
-  background: var(--content-bg);
-  border: 1px solid var(--border-color);
-  padding: 10px;
-  border-radius: 4px;
-  z-index: 9999;
-  font-size: 12px;
-  color: var(--text-color);
-}
-
-#storageIndicator p {
-  margin: 0 0 5px 0;
-  text-align: center;
-}
-
-#storageBar {
-  width: 100%;
-  height: 10px;
-  background: var(--border-color);
-  border-radius: 5px;
-  overflow: hidden;
-}
-
-#storageProgress {
-  height: 100%;
-  background: var(--accent-red);
-  border-radius: 5px;
-  transition: width 0.3s ease;
-}
   </style>
 </head>
 <body>
@@ -1251,6 +1285,13 @@ html, body {
             </li>
           <?php endforeach; ?>
         </ul>
+        <!-- Storage Indicator in Sidebar -->
+        <div class="storage-indicator">
+          <p><?php echo "$usedStorageGB GB used of $totalStorageGB GB"; ?></p>
+          <div class="storage-bar">
+            <div class="storage-progress" style="width: <?php echo $storagePercentage; ?>%;"></div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -1298,7 +1339,7 @@ html, body {
               $isVideoFile = isVideo($fileName);
               log_debug("File URL for $fileName: $fileURL");
             ?>
-            <div class="file-row">
+            <div class="file-row" onclick="<?php echo $canPreview ? "openPreviewModal('$fileURL','".addslashes($fileName)."')" : "downloadFile('$fileURL')"; ?>">
               <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? ' no-preview' : ''; ?>"></i>
               <?php if ($isImageFile): ?>
                 <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
@@ -1306,8 +1347,7 @@ html, body {
                 <i class="fas fa-file-video file-preview-icon" style="font-size: 60px; color: #666; width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.1); border-radius: 4px; margin-bottom: 10px;"></i>
               <?php endif; ?>
               <div class="file-name"
-                   title="<?php echo htmlspecialchars($fileName); ?>"
-                   onclick="<?php echo $canPreview ? "openPreviewModal('$fileURL','".addslashes($fileName)."')" : "downloadFile('$fileURL')"; ?>">
+                   title="<?php echo htmlspecialchars($fileName); ?>">
                 <?php echo htmlspecialchars($fileName); ?>
               </div>
               <div class="file-actions">
@@ -1330,6 +1370,10 @@ html, body {
 
   <div id="previewModal">
     <div id="previewContent">
+      <div id="previewNav">
+        <button id="prevBtn" onclick="navigatePreview(-1)"><i class="fas fa-arrow-left"></i></button>
+        <button id="nextBtn" onclick="navigatePreview(1)"><i class="fas fa-arrow-right"></i></button>
+      </div>
       <span id="previewClose" onclick="closePreviewModal()"><i class="fas fa-times"></i></span>
       <div id="videoPlayerContainer" style="display: none;">
         <video id="videoPlayer" preload="auto"></video>
@@ -1354,17 +1398,11 @@ html, body {
     </div>
   </div>
 
-  <!-- Storage Indicator -->
-  <div id="storageIndicator">
-    <p><?php echo "$usedStorageGB GB used of $totalStorageGB GB"; ?></p>
-    <div id="storageBar">
-      <div id="storageProgress" style="width: <?php echo $storagePercentage; ?>%;"></div>
-    </div>
-  </div>
-
   <script>
   let selectedFolder = null;
   let currentXhr = null;
+  let previewFiles = []; // Array to store previewable files
+  let currentPreviewIndex = -1;
 
   function toggleSidebar() {
     const sb = document.getElementById('sidebar');
@@ -1568,12 +1606,31 @@ html, body {
     a.remove();
   }
 
+  // Collect all previewable files for navigation
+  <?php
+  $previewableFiles = [];
+  foreach ($files as $fileName) {
+      if (isImage($fileName) || isVideo($fileName)) {
+          $relativePath = $currentRel . '/' . $fileName;
+          $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
+          $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL];
+      }
+  }
+  ?>
+
   function openPreviewModal(fileURL, fileName) {
     console.log("Previewing: " + fileURL);
     const previewModal = document.getElementById('previewModal');
     const videoContainer = document.getElementById('videoPlayerContainer');
     const imageContainer = document.getElementById('imagePreviewContainer');
     const videoPlayer = document.getElementById('videoPlayer');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    // Populate previewable files
+    previewFiles = <?php echo json_encode($previewableFiles); ?>;
+    currentPreviewIndex = previewFiles.findIndex(file => file.name === fileName);
+
     videoContainer.style.display = 'none';
     imageContainer.style.display = 'none';
     imageContainer.innerHTML = '';
@@ -1582,7 +1639,6 @@ html, body {
     if (lowerName.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
       videoPlayer.src = fileURL;
       videoContainer.style.display = 'block';
-      previewModal.style.display = 'flex';
       setupVideoPlayer(fileURL, fileName);
     } else if (lowerName.match(/\.(png|jpe?g|gif|heic)$/)) {
       fetch(fileURL)
@@ -1595,12 +1651,15 @@ html, body {
           img.src = URL.createObjectURL(blob);
           imageContainer.appendChild(img);
           imageContainer.style.display = 'flex';
-          previewModal.style.display = 'flex';
         })
         .catch(error => showAlert('Preview error: ' + error.message));
     } else {
       downloadFile(fileURL);
+      return;
     }
+
+    previewModal.style.display = 'flex';
+    updateNavigationButtons();
   }
   window.openPreviewModal = openPreviewModal;
 
@@ -1691,8 +1750,28 @@ html, body {
     document.getElementById('previewModal').style.display = 'none';
     if (document.fullscreenElement) document.exitFullscreen();
     document.getElementById('previewModal').classList.remove('fullscreen');
+    previewFiles = [];
+    currentPreviewIndex = -1;
   }
   window.closePreviewModal = closePreviewModal;
+
+  function navigatePreview(direction) {
+    if (previewFiles.length === 0 || currentPreviewIndex === -1) return;
+
+    currentPreviewIndex += direction;
+    if (currentPreviewIndex < 0) currentPreviewIndex = previewFiles.length - 1;
+    if (currentPreviewIndex >= previewFiles.length) currentPreviewIndex = 0;
+
+    const file = previewFiles[currentPreviewIndex];
+    openPreviewModal(file.url, file.name);
+  }
+
+  function updateNavigationButtons() {
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    prevBtn.disabled = previewFiles.length <= 1;
+    nextBtn.disabled = previewFiles.length <= 1;
+  }
 
   const uploadForm = document.getElementById('uploadForm');
   const fileInput = document.getElementById('fileInput');
