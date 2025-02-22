@@ -781,7 +781,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px; /* Ensure consistent icon size */
+  width: 24px;
   height: 24px;
 }
 
@@ -946,11 +946,14 @@ html, body {
   max-width: 90vw;
   height: auto;
   max-height: 90vh;
-  background: transparent;
+  background: var(--content-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 20px;
 }
 
 #previewNav {
@@ -992,6 +995,21 @@ html, body {
   font-size: 30px;
   color: #fff;
   z-index: 9999;
+}
+
+#iconPreviewContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+#iconPreviewContainer i {
+  font-size: 100px;
+  color: var(--text-color);
 }
 
 #videoPlayerContainer {
@@ -1164,6 +1182,10 @@ html, body {
 
   .file-list.grid-view .file-icon {
     font-size: 16px;
+  }
+
+  #iconPreviewContainer i {
+    font-size: 80px;
   }
 }
 
@@ -1350,7 +1372,7 @@ html, body {
               $isVideoFile = isVideo($fileName);
               log_debug("File URL for $fileName: $fileURL");
             ?>
-            <div class="file-row" onclick="<?php echo $canPreview ? "openPreviewModal('$fileURL','".addslashes($fileName)."')" : "downloadFile('$fileURL')"; ?>">
+            <div class="file-row" onclick="openPreviewModal('<?php echo htmlspecialchars($fileURL); ?>', '<?php echo addslashes($fileName); ?>')">
               <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? '' : ' no-preview'; ?>"></i>
               <?php if ($isImageFile): ?>
                 <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy" style="display: none;">
@@ -1399,6 +1421,7 @@ html, body {
         </div>
       </div>
       <div id="imagePreviewContainer" style="display: none;"></div>
+      <div id="iconPreviewContainer" style="display: none;"></div>
     </div>
   </div>
 
@@ -1621,11 +1644,10 @@ html, body {
   <?php
   $previewableFiles = [];
   foreach ($files as $fileName) {
-      if (isImage($fileName) || isVideo($fileName)) {
-          $relativePath = $currentRel . '/' . $fileName;
-          $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
-          $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL, 'type' => isImage($fileName) ? 'image' : 'video'];
-      }
+      $relativePath = $currentRel . '/' . $fileName;
+      $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
+      $iconClass = getIconClass($fileName);
+      $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL, 'type' => isImage($fileName) ? 'image' : (isVideo($fileName) ? 'video' : 'other'), 'icon' => $iconClass];
   }
   ?>
 
@@ -1634,6 +1656,7 @@ html, body {
     const previewModal = document.getElementById('previewModal');
     const videoContainer = document.getElementById('videoPlayerContainer');
     const imageContainer = document.getElementById('imagePreviewContainer');
+    const iconContainer = document.getElementById('iconPreviewContainer');
     const videoPlayer = document.getElementById('videoPlayer');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
@@ -1644,14 +1667,11 @@ html, body {
 
     videoContainer.style.display = 'none';
     imageContainer.style.display = 'none';
-    imageContainer.innerHTML = '';
+    iconContainer.style.display = 'none';
+    iconContainer.innerHTML = '';
 
-    let lowerName = fileName.toLowerCase();
-    if (lowerName.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
-      videoPlayer.src = fileURL;
-      videoContainer.style.display = 'block';
-      setupVideoPlayer(fileURL, fileName);
-    } else if (lowerName.match(/\.(png|jpe?g|gif|heic)$/)) {
+    let file = previewFiles.find(f => f.name === fileName);
+    if (file.type === 'image') {
       fetch(fileURL)
         .then(response => {
           if (!response.ok) throw new Error('Preview failed: ' + response.status);
@@ -1664,6 +1684,15 @@ html, body {
           imageContainer.style.display = 'flex';
         })
         .catch(error => showAlert('Preview error: ' + error.message));
+    } else if (file.type === 'video') {
+      videoPlayer.src = fileURL;
+      videoContainer.style.display = 'block';
+      setupVideoPlayer(fileURL, fileName);
+    } else if (file.type === 'other') {
+      const icon = document.createElement('i');
+      icon.className = file.icon;
+      iconContainer.appendChild(icon);
+      iconContainer.style.display = 'flex';
     } else {
       downloadFile(fileURL);
       return;
