@@ -751,6 +751,7 @@ function isVideo($fileName) {
     box-sizing: border-box;
     gap: 10px;
     flex-shrink: 0;
+    justify-content: center; /* Center controls horizontally */
   }
   .player-btn {
     background: var(--button-bg);
@@ -767,18 +768,36 @@ function isVideo($fileName) {
     transform: scale(1.05);
   }
   .player-btn:active { transform: scale(0.95); }
-  .seek-slider, .volume-slider {
+  .seek-slider {
     flex: 1;
     -webkit-appearance: none;
     height: 5px;
     background: var(--border-color);
     border-radius: 5px;
     outline: none;
+    margin: 0 10px; /* Add spacing */
   }
-  .seek-slider::-webkit-slider-thumb, .volume-slider::-webkit-slider-thumb {
+  .seek-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 12px;
     height: 12px;
+    background: var(--accent-red);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .volume-slider {
+    -webkit-appearance: none;
+    height: 5px;
+    width: 80px; /* Smaller width for volume slider */
+    background: var(--border-color);
+    border-radius: 5px;
+    outline: none;
+    margin: 0 5px; /* Add spacing */
+  }
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px; /* Smaller thumb for volume */
+    height: 10px;
     background: var(--accent-red);
     border-radius: 50%;
     cursor: pointer;
@@ -788,6 +807,7 @@ function isVideo($fileName) {
     color: var(--text-color);
     min-width: 40px;
     text-align: center;
+    margin: 0 5px; /* Add spacing */
   }
   #imagePreviewContainer {
     width: 100%;
