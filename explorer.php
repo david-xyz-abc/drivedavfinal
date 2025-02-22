@@ -717,20 +717,92 @@ function isVideo($fileName) {
     color: #fff;
     z-index: 9999;
   }
-  #previewContainer {
+  #videoPlayerContainer {
+    position: relative;
+    width: 90%;
+    max-width: 800px;
+    background: var(--content-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  #videoPlayer {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: #000;
+  }
+  #videoPlayerControls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    box-sizing: border-box;
+    gap: 10px;
+  }
+  .player-btn {
+    background: var(--button-bg);
+    color: var(--text-color);
+    border: none;
+    border-radius: 4px;
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    transition: background 0.3s, transform 0.2s;
+  }
+  .player-btn:hover {
+    background: var(--button-hover);
+    transform: scale(1.05);
+  }
+  .player-btn:active { transform: scale(0.95); }
+  .seek-slider, .volume-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 5px;
+    background: var(--border-color);
+    border-radius: 5px;
+    outline: none;
+  }
+  .seek-slider::-webkit-slider-thumb, .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--accent-red);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  #currentTime, #duration {
+    font-size: 12px;
+    color: var(--text-color);
+    min-width: 40px;
+    text-align: center;
+  }
+  #imagePreviewContainer {
     width: 100%;
     height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
   }
-  #previewContainer img,
-  #previewContainer video {
+  #imagePreviewContainer img {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    display: block;
+  }
+  #previewModal.fullscreen #videoPlayerContainer {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    border: none;
+    border-radius: 0;
+  }
+  #previewModal.fullscreen #videoPlayer {
+    height: 100%;
+    object-fit: contain;
   }
   #dialogModal {
     display: none;
@@ -798,7 +870,7 @@ function isVideo($fileName) {
     box-sizing: border-box;
   }
   #dropZone.active { display: flex; }
-  </style>
+</style>
 </head>
 <body>
   <div class="app-container">
@@ -901,11 +973,22 @@ function isVideo($fileName) {
   </div>
 
   <div id="previewModal">
-    <div id="previewContent">
-      <span id="previewClose" onclick="closePreviewModal()"><i class="fas fa-times"></i></span>
-      <div id="previewContainer"></div>
+  <div id="previewContent">
+    <span id="previewClose" onclick="closePreviewModal()"><i class="fas fa-times"></i></span>
+    <div id="videoPlayerContainer" style="display: none;">
+      <div id="videoPlayerControls">
+        <button id="playPauseBtn" class="player-btn"><i class="fas fa-play"></i></button>
+        <input type="range" id="seekBar" value="0" min="0" step="0.1" class="seek-slider">
+        <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+        <button id="muteBtn" class="player-btn"><i class="fas fa-volume-up"></i></button>
+        <input type="range" id="volumeBar" value="1" min="0" max="1" step="0.01" class="volume-slider">
+        <button id="fullscreenBtn" class="player-btn"><i class="fas fa-expand"></i></button>
+      </div>
+      <video id="videoPlayer" preload="metadata"></video>
     </div>
+    <div id="imagePreviewContainer" style="display: none;"></div>
   </div>
+</div>
 
   <div id="dialogModal">
     <div class="dialog-content">
@@ -1114,11 +1197,128 @@ function isVideo($fileName) {
     console.log("Downloading: " + fileURL);
     const a = document.createElement('a');
     a.href = fileURL;
-    a.download = ''; // Rely on server-side Content-Disposition
+    a.download = '';
     document.body.appendChild(a);
     a.click();
     a.remove();
   }
+
+  function openPreviewModal(fileURL, fileName) {
+    console.log("Previewing: " + fileURL);
+    const previewModal = document.getElementById('previewModal');
+    const videoContainer = document.getElementById('videoPlayerContainer');
+    const imageContainer = document.getElementById('imagePreviewContainer');
+    const videoPlayer = document.getElementById('videoPlayer');
+    videoContainer.style.display = 'none';
+    imageContainer.style.display = 'none';
+    imageContainer.innerHTML = '';
+
+    let lowerName = fileName.toLowerCase();
+    if (lowerName.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
+      videoPlayer.src = fileURL;
+      videoContainer.style.display = 'block';
+      previewModal.style.display = 'flex';
+      setupVideoPlayer(fileURL, fileName);
+    } else if (lowerName.match(/\.(png|jpe?g|gif|heic)$/)) {
+      fetch(fileURL)
+        .then(response => {
+          if (!response.ok) throw new Error('Preview failed: ' + response.status);
+          return response.blob();
+        })
+        .then(blob => {
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(blob);
+          imageContainer.appendChild(img);
+          imageContainer.style.display = 'flex';
+          previewModal.style.display = 'flex';
+        })
+        .catch(error => showAlert('Preview error: ' + error.message));
+    } else {
+      downloadFile(fileURL);
+    }
+  }
+  window.openPreviewModal = openPreviewModal;
+
+  function setupVideoPlayer(fileURL, fileName) {
+    const video = document.getElementById('videoPlayer');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const seekBar = document.getElementById('seekBar');
+    const currentTime = document.getElementById('currentTime');
+    const duration = document.getElementById('duration');
+    const muteBtn = document.getElementById('muteBtn');
+    const volumeBar = document.getElementById('volumeBar');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const previewModal = document.getElementById('previewModal');
+
+    const videoKey = `video_position_${fileName}`;
+    const savedTime = localStorage.getItem(videoKey);
+    if (savedTime) video.currentTime = parseFloat(savedTime);
+
+    video.onloadedmetadata = () => {
+      seekBar.max = video.duration;
+      duration.textContent = formatTime(video.duration);
+    };
+
+    video.ontimeupdate = () => {
+      seekBar.value = video.currentTime;
+      currentTime.textContent = formatTime(video.currentTime);
+      localStorage.setItem(videoKey, video.currentTime);
+    };
+
+    playPauseBtn.onclick = () => {
+      if (video.paused) {
+        video.play();
+        playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+      } else {
+        video.pause();
+        playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+      }
+    };
+
+    seekBar.oninput = () => {
+      video.currentTime = seekBar.value;
+    };
+
+    muteBtn.onclick = () => {
+      video.muted = !video.muted;
+      muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
+      volumeBar.value = video.muted ? 0 : video.volume;
+    };
+
+    volumeBar.oninput = () => {
+      video.volume = volumeBar.value;
+      video.muted = (volumeBar.value == 0);
+      muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
+    };
+
+    fullscreenBtn.onclick = () => {
+      if (!document.fullscreenElement) {
+        previewModal.classList.add('fullscreen');
+        previewModal.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+        previewModal.classList.remove('fullscreen');
+      }
+    };
+
+    video.onclick = () => playPauseBtn.click();
+  }
+
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
+
+  function closePreviewModal() {
+    const video = document.getElementById('videoPlayer');
+    video.pause();
+    video.src = '';
+    document.getElementById('previewModal').style.display = 'none';
+    if (document.fullscreenElement) document.exitFullscreen();
+    document.getElementById('previewModal').classList.remove('fullscreen');
+  }
+  window.closePreviewModal = closePreviewModal;
 
   const uploadForm = document.getElementById('uploadForm');
   const fileInput = document.getElementById('fileInput');
@@ -1183,43 +1383,6 @@ function isVideo($fileName) {
     }
   });
 
-  function openPreviewModal(fileURL, fileName) {
-    console.log("Previewing: " + fileURL);
-    const previewContainer = document.getElementById('previewContainer');
-    previewContainer.innerHTML = '';
-    let lowerName = fileName.toLowerCase();
-    fetch(fileURL)
-      .then(response => {
-        if (!response.ok) throw new Error('Preview failed: ' + response.status);
-        return response.blob();
-      })
-      .then(blob => {
-        const blobURL = URL.createObjectURL(blob);
-        if (lowerName.match(/\.(png|jpe?g|gif|heic)$/)) {
-          let img = document.createElement('img');
-          img.src = blobURL;
-          previewContainer.appendChild(img);
-        } else if (lowerName.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
-          let video = document.createElement('video');
-          video.src = blobURL;
-          video.controls = true;
-          video.autoplay = true;
-          previewContainer.appendChild(video);
-        } else {
-          downloadFile(fileURL);
-          return;
-        }
-        document.getElementById('previewModal').style.display = 'flex';
-      })
-      .catch(error => showAlert('Preview error: ' + error.message));
-  }
-  window.openPreviewModal = openPreviewModal;
-  function closePreviewModal() {
-    document.getElementById('previewModal').style.display = 'none';
-    document.getElementById('previewContainer').innerHTML = '';
-  }
-  window.closePreviewModal = closePreviewModal;
-
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   const body = document.body;
   const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -1237,6 +1400,6 @@ function isVideo($fileName) {
     themeToggleBtn.querySelector('i').classList.toggle('fa-sun', isLightMode);
     localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
   });
-  </script>
+</script>
 </body>
 </html>
