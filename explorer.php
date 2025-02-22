@@ -906,6 +906,7 @@ html, body {
   text-align: center;
   margin-top: 5px;
   font-weight: 500;
+  color: var(--text-color);
 }
 
 .cancel-upload-btn {
@@ -946,14 +947,13 @@ html, body {
   max-width: 90vw;
   height: auto;
   max-height: 90vh;
-  background: var(--content-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: transparent; /* Removed background box */
+  border: none; /* Removed border */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 0; /* Removed padding */
 }
 
 #previewNav {
@@ -1018,9 +1018,8 @@ html, body {
   max-width: 800px;
   height: auto;
   max-height: 80vh;
-  background: var(--content-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: transparent; /* Removed background box */
+  border: none; /* Removed border */
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1233,6 +1232,7 @@ html, body {
 .dialog-message {
   margin-bottom: 20px;
   font-size: 16px;
+  color: var(--text-color);
 }
 
 .dialog-buttons {
@@ -1473,10 +1473,10 @@ html, body {
     inputField.value = defaultValue || '';
     inputField.style.width = '100%';
     inputField.style.padding = '8px';
-    inputField.style.border = '1px solid #555';
+    inputField.style.border = '1px solid var(--border-color)';
     inputField.style.borderRadius = '4px';
-    inputField.style.background = '#2a2a2a';
-    inputField.style.color = '#fff';
+    inputField.style.background = var(--content-bg);
+    inputField.style.color = var(--text-color);
     inputField.style.marginBottom = '15px';
     dialogMessage.appendChild(inputField);
     const okBtn = document.createElement('button');
@@ -1856,7 +1856,7 @@ html, body {
   }
 
   function uploadChunk(file, startByte, fileName) {
-    const chunkSize = 10 * 1024 * 1024;
+    const chunkSize = 10 * 1024 * 1024; // 10 MB chunks
     const endByte = Math.min(startByte + chunkSize, file.size);
     const chunk = file.slice(startByte, endByte);
     
@@ -1876,12 +1876,14 @@ html, body {
       const xhr = new XMLHttpRequest();
       currentXhr = xhr;
       xhr.open('POST', uploadForm.action, true);
-      xhr.timeout = 3600000;
+      xhr.timeout = 3600000; // 1 hour timeout
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          let totalPercent = Math.round((startByte + e.loaded) / file.size * 10) / 10; // One decimal place
-          uploadProgressBar.style.width = totalPercent + '%';
-          uploadProgressPercent.textContent = `${totalPercent}% - Uploading ${fileName}`;
+          const totalBytesUploaded = startByte + e.loaded;
+          const progress = Math.min((totalBytesUploaded / file.size) * 100, 100); // Ensure progress doesn't exceed 100%
+          const roundedProgress = Math.round(progress * 10) / 10; // One decimal place
+          uploadProgressBar.style.width = roundedProgress + '%';
+          uploadProgressPercent.textContent = `${roundedProgress}% - Uploading ${fileName}`;
         }
       };
       xhr.onload = () => {
@@ -1889,8 +1891,13 @@ html, body {
           if (endByte < file.size) {
             uploadChunk(file, endByte, fileName);
           } else {
+            uploadProgressBar.style.width = '100%'; // Ensure it reaches 100%
+            uploadProgressPercent.textContent = `100.0% - Upload completed for ${fileName}`;
             showAlert('Upload completed successfully.');
-            location.reload();
+            setTimeout(() => {
+              uploadProgressContainer.style.display = 'none';
+              location.reload();
+            }, 1000); // Wait 1 second before hiding and reloading
           }
         } else {
           handleUploadError(xhr, attempts, maxAttempts);
