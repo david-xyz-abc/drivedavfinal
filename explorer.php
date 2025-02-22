@@ -2,7 +2,7 @@
 session_start();
 
 // Debug log setup with toggle
-define('DEBUG', false); // Set to true for debugging, false in production
+define('DEBUG', true); // Set to true for debugging streaming issues
 $debug_log = '/var/www/html/selfhostedgdrive/debug.log';
 function log_debug($message) {
     if (DEBUG) {
@@ -74,7 +74,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
     $mime = $mime_types[$ext] ?? mime_content_type($filePath) ?? 'application/octet-stream';
 
-    // Serve file (no force download for previewable types)
+    // Serve file
     header("Content-Type: $mime");
     header("Accept-Ranges: bytes");
     header("Content-Length: $fileSize");
@@ -89,11 +89,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
         exit;
     }
 
-    ob_clean();
+    // Disable output buffering for streaming
+    while (ob_get_level()) ob_end_clean();
+    ob_implicit_flush(true);
 
     // Handle range requests
     if (isset($_SERVER['HTTP_RANGE'])) {
         $range = $_SERVER['HTTP_RANGE'];
+        log_debug("Range request received: $range");
         if (preg_match('/bytes=(\d+)-(\d*)?/', $range, $matches)) {
             $start = (int)$matches[1];
             $end = isset($matches[2]) && $matches[2] !== '' ? (int)$matches[2] : $fileSize - 1;
@@ -113,12 +116,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
 
             fseek($fp, $start);
             $remaining = $length;
+            $startTime = microtime(true);
             while ($remaining > 0 && !feof($fp) && !connection_aborted()) {
-                $chunk = min($remaining, 8192);
-                echo fread($fp, $chunk);
+                $chunk = min($remaining, 1048576); // 1MB chunks
+                $data = fread($fp, $chunk);
+                echo $data;
                 flush();
                 $remaining -= $chunk;
             }
+            $endTime = microtime(true);
+            log_debug("Served range $start-$end in " . ($endTime - $startTime) . " seconds");
         } else {
             log_debug("Malformed range header: $range");
             header("HTTP/1.1 416 Range Not Satisfiable");
@@ -127,10 +134,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
             exit;
         }
     } else {
+        $startTime = microtime(true);
         while (!feof($fp) && !connection_aborted()) {
-            echo fread($fp, 8192);
+            $data = fread($fp, 1048576); // 1MB chunks
+            echo $data;
             flush();
         }
+        $endTime = microtime(true);
+        log_debug("Served full file in " . ($endTime - $startTime) . " seconds");
     }
 
     fclose($fp);
@@ -219,12 +230,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
     foreach ($_FILES['upload_files']['name'] as $i => $fname) {
         if ($_FILES['upload_files']['error'][$i] === UPLOAD_ERR_OK) {
             $tmpPath = $_FILES['upload_files']['tmp_name'][$i];
-            $originalName = $_POST['file_name'] ?? basename($fname); // Use file_name from JS or fallback
+            $originalName = $_POST['file_name'] ?? basename($fname);
             $dest = $currentDir . '/' . $originalName;
             $chunkStart = (int)($_POST['chunk_start'] ?? 0);
             $totalSize = (int)($_POST['total_size'] ?? filesize($tmpPath));
 
-            // Open the destination file in append mode for chunks
             $output = fopen($dest, $chunkStart === 0 ? 'wb' : 'ab');
             if (!$output) {
                 log_debug("Failed to open destination file: $dest");
@@ -240,12 +250,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
                 continue;
             }
 
-            // Seek to the correct position if appending
             if ($chunkStart > 0) {
                 fseek($output, $chunkStart);
             }
 
-            // Write the chunk
             while (!feof($input)) {
                 $data = fread($input, 8192);
                 if ($data === false || fwrite($output, $data) === false) {
@@ -261,13 +269,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['upload_files'])) {
             fclose($input);
             fclose($output);
 
-            // Set permissions
             chown($dest, 'www-data');
             chgrp($dest, 'www-data');
             chmod($dest, 0664);
             log_debug("Uploaded chunk for: $dest at offset $chunkStart");
 
-            // Check if this is the final chunk
             if (filesize($dest) >= $totalSize) {
                 log_debug("Completed upload for: $dest");
             }
@@ -846,7 +852,7 @@ html, body {
 #videoPlayer {
   width: 100%;
   height: auto;
-  max-height: calc(80vh - 60px); /* Leave room for controls */
+  max-height: calc(80vh - 60px);
   display: block;
   background: #000;
   object-fit: contain;
@@ -943,7 +949,6 @@ html, body {
   object-fit: contain;
 }
 
-/* Mobile adjustments */
 @media (max-width: 768px) {
   #videoPlayerContainer {
     max-width: 100%;
@@ -951,7 +956,7 @@ html, body {
   }
 
   #videoPlayer {
-    max-height: calc(70vh - 50px); /* Adjust for smaller controls */
+    max-height: calc(70vh - 50px);
   }
 
   #videoPlayerControls {
@@ -1179,7 +1184,7 @@ html, body {
     <div id="previewContent">
       <span id="previewClose" onclick="closePreviewModal()"><i class="fas fa-times"></i></span>
       <div id="videoPlayerContainer" style="display: none;">
-        <video id="videoPlayer" preload="metadata"></video>
+        <video id="videoPlayer" preload="auto"></video>
         <div id="videoPlayerControls">
           <button id="playPauseBtn" class="player-btn"><i class="fas fa-play"></i></button>
           <span id="currentTime">0:00</span>
@@ -1455,7 +1460,7 @@ html, body {
     const previewModal = document.getElementById('previewModal');
 
     video.src = fileURL;
-    video.preload = 'metadata';
+    video.preload = 'auto'; // Buffer more aggressively
     video.load();
 
     const videoKey = `video_position_${fileName}`;
@@ -1570,12 +1575,12 @@ html, body {
   }
 
   function uploadChunk(file, startByte) {
-    const chunkSize = 10 * 1024 * 1024; // 10MB chunks
+    const chunkSize = 10 * 1024 * 1024;
     const endByte = Math.min(startByte + chunkSize, file.size);
     const chunk = file.slice(startByte, endByte);
     
     const formData = new FormData();
-    formData.append('upload_files[]', chunk, file.name); // Set filename explicitly
+    formData.append('upload_files[]', chunk, file.name);
     formData.append('file_name', file.name);
     formData.append('chunk_start', startByte);
     formData.append('chunk_end', endByte - 1);
@@ -1589,7 +1594,7 @@ html, body {
       const xhr = new XMLHttpRequest();
       currentXhr = xhr;
       xhr.open('POST', uploadForm.action, true);
-      xhr.timeout = 3600000; // 1 hour timeout
+      xhr.timeout = 3600000;
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           let totalPercent = Math.round((startByte + e.loaded) / file.size * 100);
@@ -1600,7 +1605,7 @@ html, body {
       xhr.onload = () => {
         if (xhr.status === 200) {
           if (endByte < file.size) {
-            uploadChunk(file, endByte); // Upload next chunk
+            uploadChunk(file, endByte);
           } else {
             showAlert('Upload completed successfully.');
             location.reload();
@@ -1618,7 +1623,7 @@ html, body {
       attempts++;
       if (attempts < maxAttempts) {
         showAlert(`Upload failed for chunk (Attempt ${attempts}). Retrying in 5 seconds... Status: ${xhr.status} - ${xhr.statusText}`);
-        setTimeout(attemptUpload, 5000); // Retry after 5 seconds
+        setTimeout(attemptUpload, 5000);
       } else {
         showAlert(`Upload failed after ${maxAttempts} attempts. Status: ${xhr.status} - ${xhr.statusText}. Please check server logs or network connection.`);
         uploadProgressContainer.style.display = 'none';
