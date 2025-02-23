@@ -7,7 +7,7 @@ DrivePulse is a self-hosted file storage and management system, inspired by Goog
 - **User Authentication**: Secure login and registration system for multiple users.
 - **File Management**: Upload, download, delete, and rename files and folders.
 - **Private Directories**: Each user has their own private storage space.
-- **Responsive Design**: Modern, dark-themed interface with blue accents, using CSS and Font Awesome.
+- **Responsive Design**: Modern, dark-themed interface with red accents, using CSS and Font Awesome.
 - **File Previews**: Preview images and videos directly in the browser.
 - **Easy Installation**: One-line installation script for Apache, PHP, and required dependencies.
 
