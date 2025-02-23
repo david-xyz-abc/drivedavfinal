@@ -2,7 +2,7 @@
 session_start();
 
 // Debug log setup with toggle
-define('DEBUG', false);
+define('DEBUG', true); // Set to true for now to catch issues
 $debug_log = '/var/www/html/selfhostedgdrive/debug.log';
 function log_debug($message) {
     if (DEBUG) {
@@ -10,7 +10,7 @@ function log_debug($message) {
     }
 }
 
-// Ensure debug log exists and has correct permissions (run once during setup)
+// Ensure debug log exists and has correct permissions
 if (!file_exists($debug_log)) {
     file_put_contents($debug_log, "Debug log initialized\n");
     chown($debug_log, 'www-data');
@@ -24,7 +24,7 @@ log_debug("Loggedin: " . (isset($_SESSION['loggedin']) ? var_export($_SESSION['l
 log_debug("Username: " . (isset($_SESSION['username']) ? $_SESSION['username'] : "Not set"));
 log_debug("GET params: " . var_export($_GET, true));
 
-// Optimized file serving with range support
+// Optimized file serving with range support and safety checks
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
     if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
         log_debug("Unauthorized file request, redirecting to index.php");
@@ -55,8 +55,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     }
 
     $fileSize = filesize($filePath);
-    $fileName = basename($filePath);
+    // Safety check: Limit file size to prevent crashes (e.g., 5GB max)
+    $maxFileSize = 5 * 1024 * 1024 * 1024; // 5GB
+    if ($fileSize > $maxFileSize) {
+        log_debug("File too large to serve: $filePath ($fileSize bytes)");
+        header("HTTP/1.1 413 Payload Too Large");
+        echo "File exceeds maximum allowed size.";
+        exit;
+    }
 
+    $fileName = basename($filePath);
     $mime_types = [
         'pdf' => 'application/pdf',
         'png' => 'image/png',
@@ -88,6 +96,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
     }
 
     ob_clean();
+    set_time_limit(300); // 5-minute timeout to prevent hanging
 
     if (isset($_SERVER['HTTP_RANGE'])) {
         $range = $_SERVER['HTTP_RANGE'];
@@ -193,6 +202,10 @@ if ($currentDir === false || strpos($currentDir, $baseDir) !== 0) {
 function getDirSize($dir) {
     $size = 0;
     $items = scandir($dir);
+    if ($items === false) {
+        log_debug("Failed to scan directory: $dir");
+        return 0;
+    }
     foreach ($items as $item) {
         if ($item === '.' || $item === '..') continue;
         $path = $dir . '/' . $item;
@@ -205,7 +218,7 @@ function getDirSize($dir) {
     return $size;
 }
 
-$totalStorage = 10 * 1024 * 1024 * 1024; // 10 GB in bytes (configurable)
+$totalStorage = 10 * 1024 * 1024 * 1024; // 10 GB in bytes
 $usedStorage = getDirSize($baseDir);
 $usedStorageGB = round($usedStorage / (1024 * 1024 * 1024), 2);
 $totalStorageGB = round($totalStorage / (1024 * 1024 * 1024), 2);
