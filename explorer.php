@@ -2,7 +2,7 @@
 session_start();
 
 // Debug log setup with toggle
-define('DEBUG', true); // Set to true for now to catch issues
+define('DEBUG', true); // Keep true for debugging
 $debug_log = '/var/www/html/selfhostedgdrive/debug.log';
 function log_debug($message) {
     if (DEBUG) {
@@ -24,7 +24,7 @@ log_debug("Loggedin: " . (isset($_SESSION['loggedin']) ? var_export($_SESSION['l
 log_debug("Username: " . (isset($_SESSION['username']) ? $_SESSION['username'] : "Not set"));
 log_debug("GET params: " . var_export($_GET, true));
 
-// Optimized file serving with range support and safety checks
+// File serving with streaming
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
     if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
         log_debug("Unauthorized file request, redirecting to index.php");
@@ -54,13 +54,19 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
         exit;
     }
 
+    if (!is_readable($filePath)) {
+        log_debug("File not readable: $filePath");
+        header("HTTP/1.1 403 Forbidden");
+        echo "Permission denied.";
+        exit;
+    }
+
     $fileSize = filesize($filePath);
-    // Safety check: Limit file size to prevent crashes (e.g., 5GB max)
-    $maxFileSize = 5 * 1024 * 1024 * 1024; // 5GB
+    $maxFileSize = 10 * 1024 * 1024 * 1024; // 10GB limit (adjustable)
     if ($fileSize > $maxFileSize) {
-        log_debug("File too large to serve: $filePath ($fileSize bytes)");
+        log_debug("File too large to stream: $filePath ($fileSize bytes)");
         header("HTTP/1.1 413 Payload Too Large");
-        echo "File exceeds maximum allowed size.";
+        echo "File exceeds maximum streaming size.";
         exit;
     }
 
@@ -83,29 +89,29 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
 
     header("Content-Type: $mime");
     header("Accept-Ranges: bytes");
-    header("Content-Length: $fileSize");
+    header("Content-Disposition: inline; filename=\"" . $fileName . "\"");
     header("Cache-Control: private, max-age=31536000");
     header("X-Content-Type-Options: nosniff");
 
-    $fp = fopen($filePath, 'rb');
+    $fp = @fopen($filePath, 'rb'); // Suppress errors, handle manually
     if ($fp === false) {
         log_debug("Failed to open file: $filePath");
         header("HTTP/1.1 500 Internal Server Error");
-        echo "Unable to serve file.";
+        echo "Unable to stream file.";
         exit;
     }
 
-    ob_clean();
-    set_time_limit(300); // 5-minute timeout to prevent hanging
+    set_time_limit(300); // 5-minute timeout
 
     if (isset($_SERVER['HTTP_RANGE'])) {
         $range = $_SERVER['HTTP_RANGE'];
+        log_debug("Range request: $range");
         if (preg_match('/bytes=(\d+)-(\d*)?/', $range, $matches)) {
             $start = (int)$matches[1];
             $end = isset($matches[2]) && $matches[2] !== '' ? (int)$matches[2] : $fileSize - 1;
 
             if ($start >= $fileSize || $end >= $fileSize || $start > $end) {
-                log_debug("Invalid range request: $range for file size $fileSize");
+                log_debug("Invalid range: $range for size $fileSize");
                 header("HTTP/1.1 416 Range Not Satisfiable");
                 header("Content-Range: bytes */$fileSize");
                 fclose($fp);
@@ -117,36 +123,60 @@ if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file']
             header("Content-Length: $length");
             header("Content-Range: bytes $start-$end/$fileSize");
 
-            fseek($fp, $start);
+            if (fseek($fp, $start) === -1) {
+                log_debug("Failed to seek to $start in $filePath");
+                header("HTTP/1.1 500 Internal Server Error");
+                echo "Streaming error.";
+                fclose($fp);
+                exit;
+            }
+
             $remaining = $length;
             while ($remaining > 0 && !feof($fp) && !connection_aborted()) {
                 $chunk = min($remaining, 8192);
-                echo fread($fp, $chunk);
+                $data = fread($fp, $chunk);
+                if ($data === false) {
+                    log_debug("Read error at offset $start in $filePath");
+                    header("HTTP/1.1 500 Internal Server Error");
+                    echo "Streaming interrupted.";
+                    fclose($fp);
+                    exit;
+                }
+                echo $data;
                 flush();
-                $remaining -= $chunk;
+                $remaining -= strlen($data);
             }
         } else {
-            log_debug("Malformed range header: $range");
+            log_debug("Malformed range: $range");
             header("HTTP/1.1 416 Range Not Satisfiable");
             header("Content-Range: bytes */$fileSize");
             fclose($fp);
             exit;
         }
     } else {
+        header("Content-Length: $fileSize");
         while (!feof($fp) && !connection_aborted()) {
-            echo fread($fp, 8192);
+            $data = fread($fp, 8192);
+            if ($data === false) {
+                log_debug("Read error during full stream: $filePath");
+                header("HTTP/1.1 500 Internal Server Error");
+                echo "Streaming interrupted.";
+                fclose($fp);
+                exit;
+            }
+            echo $data;
             flush();
         }
     }
 
     fclose($fp);
-    log_debug("Successfully served file: $filePath");
+    log_debug("Successfully streamed: $filePath");
     exit;
 }
 
 // Check login for page access
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
-    log_debug("Redirecting to index.php due to no login");
+    log_debug("No login detected, redirecting to index.php");
     header("Location: /selfhostedgdrive/index.php", true, 302);
     exit;
 }
@@ -157,7 +187,7 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_
 $username = $_SESSION['username'];
 $homeDirPath = "/var/www/html/webdav/users/$username/Home";
 if (!is_dir($homeDirPath)) {
-    if (!mkdir($homeDirPath, 0777, true)) {
+    if (!@mkdir($homeDirPath, 0777, true)) {
         log_debug("Failed to create home directory: $homeDirPath");
         header("HTTP/1.1 500 Internal Server Error");
         echo "Server configuration error.";
@@ -168,7 +198,7 @@ if (!is_dir($homeDirPath)) {
 }
 $baseDir = realpath($homeDirPath);
 if ($baseDir === false) {
-    log_debug("Base directory resolution failed for: $homeDirPath");
+    log_debug("Base directory resolution failed: $homeDirPath");
     header("HTTP/1.1 500 Internal Server Error");
     echo "Server configuration error.";
     exit;
