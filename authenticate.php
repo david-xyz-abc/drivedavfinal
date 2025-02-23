@@ -13,7 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Load users
     if (!file_exists($usersFile)) {
         $_SESSION['error'] = "No users registered yet.";
         header("Location: index.php");
@@ -21,19 +20,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $users = json_decode(file_get_contents($usersFile), true);
-    if (!isset($users[$username]) || !password_verify($password, $users[$username])) {
+    if (!is_array($users) || !isset($users[$username]) || !password_verify($password, $users[$username])) {
         $_SESSION['error'] = "Invalid username or password.";
-        file_put_contents('/tmp/auth_debug.log', "Authenticate: Login failed for $username\n", FILE_APPEND);
+        file_put_contents('/tmp/auth_debug.log', date('[Y-m-d H:i:s] ') . "Authenticate: Login failed for $username\n", FILE_APPEND);
         header("Location: index.php");
         exit;
     }
 
-    // Successful login
     $_SESSION['loggedin'] = true;
-    $_SESSION['username'] = $username; // Store username for later use
-    file_put_contents('/tmp/auth_debug.log', "Authenticate: Session ID: " . session_id() . "\n", FILE_APPEND);
-    file_put_contents('/tmp/auth_debug.log', "Authenticate: Loggedin set: " . var_export($_SESSION['loggedin'], true) . "\n", FILE_APPEND);
-    file_put_contents('/tmp/auth_debug.log', "Authenticate: Username: $username\n", FILE_APPEND);
+    $_SESSION['username'] = $username;
+    session_regenerate_id(true); // Prevent session fixation
+    file_put_contents('/tmp/auth_debug.log', date('[Y-m-d H:i:s] ') . "Authenticate: Session ID: " . session_id() . "\n", FILE_APPEND);
+    file_put_contents('/tmp/auth_debug.log', date('[Y-m-d H:i:s] ') . "Authenticate: Loggedin set: " . var_export($_SESSION['loggedin'], true) . "\n", FILE_APPEND);
+    file_put_contents('/tmp/auth_debug.log', date('[Y-m-d H:i:s] ') . "Authenticate: Username: $username\n", FILE_APPEND);
     header("Location: explorer.php?folder=Home");
     exit;
 } else {
