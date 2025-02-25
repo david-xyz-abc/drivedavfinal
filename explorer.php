@@ -799,14 +799,18 @@ html, body {
 }
 
 .file-icon-large {
-  font-size: 60px; /* Larger icon to fill the space */
+  font-size: 60px; /* Large icon for grid view */
   margin-bottom: 10px;
-  display: flex;
+  display: none; /* Hidden by default in list view */
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 120px; /* Match the height of the image preview */
   color: var(--text-color);
+}
+
+.file-list.grid-view .file-icon-large {
+  display: flex; /* Show only in grid view */
 }
 
 .file-preview {
@@ -1391,7 +1395,7 @@ html, body {
       </div>
       <div class="content-inner">
         <div id="dropZone">Drop files here to upload</div>
-        <div class="file-list" id="fileList">
+       <div class="file-list" id="fileList">
   <?php foreach ($files as $fileName): ?>
     <?php 
         $relativePath = $currentRel . '/' . $fileName;
