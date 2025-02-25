@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -24,6 +23,55 @@ log_debug("Session ID: " . session_id());
 log_debug("Loggedin: " . (isset($_SESSION['loggedin']) ? var_export($_SESSION['loggedin'], true) : "Not set"));
 log_debug("Username: " . (isset($_SESSION['username']) ? $_SESSION['username'] : "Not set"));
 log_debug("GET params: " . var_export($_GET, true));
+
+// Function to generate and get video thumbnail
+function getVideoThumbnail($filePath, $username) {
+    $thumbnailDir = "/var/www/html/webdav/users/$username/thumbnails";
+    if (!is_dir($thumbnailDir)) {
+        mkdir($thumbnailDir, 0777, true);
+        chown($thumbnailDir, 'www-data');
+        chgrp($thumbnailDir, 'www-data');
+    }
+
+    $fileName = basename($filePath);
+    $thumbnailPath = "$thumbnailDir/" . pathinfo($fileName, PATHINFO_FILENAME) . '_thumb.jpg';
+
+    if (!file_exists($thumbnailPath)) {
+        // Use FFmpeg to generate a thumbnail (e.g., first frame at 1 second)
+        $command = "ffmpeg -i " . escapeshellarg($filePath) . " -ss 1 -frames:v 1 -q:v 2 " . escapeshellarg($thumbnailPath) . " 2>/dev/null";
+        exec($command, $output, $returnCode);
+        
+        if ($returnCode !== 0) {
+            log_debug("Failed to generate thumbnail for $filePath: FFmpeg error");
+            return false; // Fallback if thumbnail generation fails
+        }
+        chown($thumbnailPath, 'www-data');
+        chgrp($thumbnailPath, 'www-data');
+        chmod($thumbnailPath, 0664);
+    }
+
+    return "/selfhostedgdrive/explorer.php?action=serve_thumbnail&file=" . urlencode($fileName) . "&user=" . urlencode($username);
+}
+
+// Add thumbnail serving logic
+if (isset($_GET['action']) && $_GET['action'] === 'serve_thumbnail' && isset($_GET['file']) && isset($_GET['user'])) {
+    $username = urldecode($_GET['user']);
+    $fileName = urldecode($_GET['file']);
+    $thumbnailDir = realpath("/var/www/html/webdav/users/$username/thumbnails");
+    $thumbnailPath = $thumbnailDir . '/' . pathinfo($fileName, PATHINFO_FILENAME) . '_thumb.jpg';
+
+    if (file_exists($thumbnailPath)) {
+        header("Content-Type: image/jpeg");
+        header("Cache-Control: public, max-age=31536000");
+        readfile($thumbnailPath);
+        exit;
+    } else {
+        log_debug("Thumbnail not found for $fileName");
+        header("HTTP/1.1 404 Not Found");
+        echo "Thumbnail not found.";
+        exit;
+    }
+}
 
 // Optimized file serving with range support
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
@@ -800,16 +848,16 @@ html, body {
 }
 
 .file-preview {
-  display: none;
+    display: none;
 }
 
 .file-list.grid-view .file-preview {
-  display: block;
-  width: 100%;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 4px;
-  margin-bottom: 10px;
+    display: block;
+    width: 100%;
+    height: 120px;
+    object-fit: cover; /* Ensures the thumbnail scales to fit */
+    border-radius: 4px;
+    margin-bottom: 10px;
 }
 
 .file-list.grid-view .file-icon:not(.no-preview) {
@@ -1296,7 +1344,7 @@ html, body {
 }
 
 #dropZone.active { display: flex; }
-</style>
+  </style>
 </head>
 <body>
   <div class="app-container">
@@ -1379,36 +1427,38 @@ html, body {
         <div class="file-list" id="fileList">
           <?php foreach ($files as $fileName): ?>
             <?php 
-              $relativePath = $currentRel . '/' . $fileName;
-              $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
-              $iconClass = getIconClass($fileName);
-              $canPreview = (isImage($fileName) || isVideo($fileName));
-              $isImageFile = isImage($fileName);
-              $isVideoFile = isVideo($fileName);
-              log_debug("File URL for $fileName: $fileURL");
+                $relativePath = $currentRel . '/' . $fileName;
+                $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
+                $iconClass = getIconClass($fileName);
+                $canPreview = (isImage($fileName) || isVideo($fileName));
+                $isImageFile = isImage($fileName);
+                $isVideoFile = isVideo($fileName);
+                log_debug("File URL for $fileName: $fileURL");
+
+                // Generate thumbnail URL for videos
+                $thumbnailURL = $isVideoFile ? getVideoThumbnail($currentDir . '/' . $fileName, $username) : false;
             ?>
             <div class="file-row" onclick="openPreviewModal('<?php echo htmlspecialchars($fileURL); ?>', '<?php echo addslashes($fileName); ?>')">
-              <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? '' : ' no-preview'; ?>"></i>
-              <?php if ($isImageFile): ?>
-                <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
-              <?php elseif ($isVideoFile): ?>
-                <!-- No preview in list view, just icon -->
-              <?php endif; ?>
-              <div class="file-name"
-                   title="<?php echo htmlspecialchars($fileName); ?>">
-                <?php echo htmlspecialchars($fileName); ?>
-              </div>
-              <div class="file-actions">
-                <button type="button" class="btn" onclick="downloadFile('<?php echo $fileURL; ?>')" title="Download">
-                  <i class="fas fa-download"></i>
-                </button>
-                <button type="button" class="btn" title="Rename File" onclick="renameFilePrompt('<?php echo addslashes($fileName); ?>')">
-                  <i class="fas fa-edit"></i>
-                </button>
-                <button type="button" class="btn" title="Delete File" onclick="confirmFileDelete('<?php echo addslashes($fileName); ?>')">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>
+                <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? '' : ' no-preview'; ?>"></i>
+                <?php if ($isImageFile): ?>
+                    <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
+                <?php elseif ($isVideoFile && $thumbnailURL): ?>
+                    <img src="<?php echo htmlspecialchars($thumbnailURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
+                <?php endif; ?>
+                <div class="file-name" title="<?php echo htmlspecialchars($fileName); ?>">
+                    <?php echo htmlspecialchars($fileName); ?>
+                </div>
+                <div class="file-actions">
+                    <button type="button" class="btn" onclick="downloadFile('<?php echo $fileURL; ?>')" title="Download">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button type="button" class="btn" title="Rename File" onclick="renameFilePrompt('<?php echo addslashes($fileName); ?>')">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn" title="Delete File" onclick="confirmFileDelete('<?php echo addslashes($fileName); ?>')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </div>
           <?php endforeach; ?>
         </div>
@@ -1447,34 +1497,35 @@ html, body {
     </div>
   </div>
 
+  
   <script>
-  let selectedFolder = null;
-  let currentXhr = null;
-  let previewFiles = []; // Array to store previewable files
-  let currentPreviewIndex = -1;
-  let isLoadingImage = false; // Flag to prevent overlapping image loads
+let selectedFolder = null;
+let currentXhr = null;
+let previewFiles = []; // Array to store previewable files
+let currentPreviewIndex = -1;
+let isLoadingImage = false; // Flag to prevent overlapping image loads
 
-  function toggleSidebar() {
+function toggleSidebar() {
     const sb = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
     sb.classList.toggle('open');
     overlay.classList.toggle('show');
-  }
-  document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
+}
+document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
 
-  function selectFolder(element, folderName) {
+function selectFolder(element, folderName) {
     document.querySelectorAll('.folder-item.selected').forEach(item => item.classList.remove('selected'));
     element.classList.add('selected');
     selectedFolder = folderName;
     document.getElementById('btnDeleteFolder').style.display = 'flex';
     document.getElementById('btnRenameFolder').style.display = 'flex';
-  }
-  function openFolder(folderPath) {
+}
+function openFolder(folderPath) {
     console.log("Opening folder: " + folderPath);
     window.location.href = '/selfhostedgdrive/explorer.php?folder=' + folderPath;
-  }
+}
 
-  function showPrompt(message, defaultValue, callback) {
+function showPrompt(message, defaultValue, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
@@ -1506,9 +1557,9 @@ html, body {
     cancelBtn.onclick = () => { closeDialog(); if (callback) callback(null); };
     dialogButtons.appendChild(cancelBtn);
     dialogModal.classList.add('show');
-  }
-  function closeDialog() { document.getElementById('dialogModal').classList.remove('show'); }
-  function showAlert(message, callback) {
+}
+function closeDialog() { document.getElementById('dialogModal').classList.remove('show'); }
+function showAlert(message, callback) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
@@ -1520,8 +1571,8 @@ html, body {
     okBtn.onclick = () => { closeDialog(); if (callback) callback(); };
     dialogButtons.appendChild(okBtn);
     dialogModal.classList.add('show');
-  }
-  function showConfirm(message, onYes, onNo) {
+}
+function showConfirm(message, onYes, onNo) {
     const dialogModal = document.getElementById('dialogModal');
     const dialogMessage = document.getElementById('dialogMessage');
     const dialogButtons = document.getElementById('dialogButtons');
@@ -1538,115 +1589,115 @@ html, body {
     noBtn.onclick = () => { closeDialog(); if (onNo) onNo(); };
     dialogButtons.appendChild(noBtn);
     dialogModal.classList.add('show');
-  }
+}
 
-  function createFolder() {
+function createFolder() {
     showPrompt("Enter new folder name:", "", function(folderName) {
-      if (folderName && folderName.trim() !== "") {
-        let form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputCreate = document.createElement('input');
-        inputCreate.type = 'hidden';
-        inputCreate.name = 'create_folder';
-        inputCreate.value = '1';
-        form.appendChild(inputCreate);
-        let inputName = document.createElement('input');
-        inputName.type = 'hidden';
-        inputName.name = 'folder_name';
-        inputName.value = folderName.trim();
-        form.appendChild(inputName);
-        document.body.appendChild(form);
-        form.submit();
-      }
+        if (folderName && folderName.trim() !== "") {
+            let form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
+            let inputCreate = document.createElement('input');
+            inputCreate.type = 'hidden';
+            inputCreate.name = 'create_folder';
+            inputCreate.value = '1';
+            form.appendChild(inputCreate);
+            let inputName = document.createElement('input');
+            inputName.type = 'hidden';
+            inputName.name = 'folder_name';
+            inputName.value = folderName.trim();
+            form.appendChild(inputName);
+            document.body.appendChild(form);
+            form.submit();
+        }
     });
-  }
+}
 
-  document.getElementById('btnRenameFolder').addEventListener('click', function() {
+document.getElementById('btnRenameFolder').addEventListener('click', function() {
     if (!selectedFolder) return;
     showPrompt("Enter new folder name:", selectedFolder, function(newName) {
-      if (newName && newName.trim() !== "" && newName !== selectedFolder) {
-        let form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputAction = document.createElement('input');
-        inputAction.type = 'hidden';
-        inputAction.name = 'rename_folder';
-        inputAction.value = '1';
-        form.appendChild(inputAction);
-        let inputOld = document.createElement('input');
-        inputOld.type = 'hidden';
-        inputOld.name = 'old_folder_name';
-        inputOld.value = selectedFolder;
-        form.appendChild(inputOld);
-        let inputNew = document.createElement('input');
-        inputNew.type = 'hidden';
-        inputNew.name = 'new_folder_name';
-        inputNew.value = newName.trim();
-        form.appendChild(inputNew);
-        document.body.appendChild(form);
-        form.submit();
-      }
+        if (newName && newName.trim() !== "" && newName !== selectedFolder) {
+            let form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
+            let inputAction = document.createElement('input');
+            inputAction.type = 'hidden';
+            inputAction.name = 'rename_folder';
+            inputAction.value = '1';
+            form.appendChild(inputAction);
+            let inputOld = document.createElement('input');
+            inputOld.type = 'hidden';
+            inputOld.name = 'old_folder_name';
+            inputOld.value = selectedFolder;
+            form.appendChild(inputOld);
+            let inputNew = document.createElement('input');
+            inputNew.type = 'hidden';
+            inputNew.name = 'new_folder_name';
+            inputNew.value = newName.trim();
+            form.appendChild(inputNew);
+            document.body.appendChild(form);
+            form.submit();
+        }
     });
-  });
+});
 
-  document.getElementById('btnDeleteFolder').addEventListener('click', function() {
+document.getElementById('btnDeleteFolder').addEventListener('click', function() {
     if (!selectedFolder) return;
     showConfirm(`Delete folder "${selectedFolder}"?`, () => {
-      let form = document.createElement('form');
-      form.method = 'POST';
-      form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(selectedFolder);
-      document.body.appendChild(form);
-      form.submit();
+        let form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(selectedFolder);
+        document.body.appendChild(form);
+        form.submit();
     });
-  });
+});
 
-  function renameFilePrompt(fileName) {
+function renameFilePrompt(fileName) {
     let dotIndex = fileName.lastIndexOf(".");
     let baseName = fileName;
     let ext = "";
     if (dotIndex > 0) {
-      baseName = fileName.substring(0, dotIndex);
-      ext = fileName.substring(dotIndex);
+        baseName = fileName.substring(0, dotIndex);
+        ext = fileName.substring(dotIndex);
     }
     showPrompt("Enter new file name:", baseName, function(newBase) {
-      if (newBase && newBase.trim() !== "" && newBase.trim() !== baseName) {
-        let finalName = newBase.trim() + ext;
+        if (newBase && newBase.trim() !== "" && newBase.trim() !== baseName) {
+            let finalName = newBase.trim() + ext;
+            let form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
+            let inputAction = document.createElement('input');
+            inputAction.type = 'hidden';
+            inputAction.name = 'rename_file';
+            inputAction.value = '1';
+            form.appendChild(inputAction);
+            let inputOld = document.createElement('input');
+            inputOld.type = 'hidden';
+            inputOld.name = 'old_file_name';
+            inputOld.value = fileName;
+            form.appendChild(inputOld);
+            let inputNew = document.createElement('input');
+            inputNew.type = 'hidden';
+            inputNew.name = 'new_file_name';
+            inputNew.value = finalName;
+            form.appendChild(inputNew);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
+}
+
+function confirmFileDelete(fileName) {
+    showConfirm(`Delete file "${fileName}"?`, () => {
         let form = document.createElement('form');
         form.method = 'POST';
-        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>';
-        let inputAction = document.createElement('input');
-        inputAction.type = 'hidden';
-        inputAction.name = 'rename_file';
-        inputAction.value = '1';
-        form.appendChild(inputAction);
-        let inputOld = document.createElement('input');
-        inputOld.type = 'hidden';
-        inputOld.name = 'old_file_name';
-        inputOld.value = fileName;
-        form.appendChild(inputOld);
-        let inputNew = document.createElement('input');
-        inputNew.type = 'hidden';
-        inputNew.name = 'new_file_name';
-        inputNew.value = finalName;
-        form.appendChild(inputNew);
+        form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(fileName);
         document.body.appendChild(form);
         form.submit();
-      }
     });
-  }
+}
 
-  function confirmFileDelete(fileName) {
-    showConfirm(`Delete file "${fileName}"?`, () => {
-      let form = document.createElement('form');
-      form.method = 'POST';
-      form.action = '/selfhostedgdrive/explorer.php?folder=<?php echo urlencode($currentRel); ?>&delete=' + encodeURIComponent(fileName);
-      document.body.appendChild(form);
-      form.submit();
-    });
-  }
-
-  function downloadFile(fileURL) {
+function downloadFile(fileURL) {
     console.log("Downloading: " + fileURL);
     const a = document.createElement('a');
     a.href = fileURL;
@@ -1654,20 +1705,21 @@ html, body {
     document.body.appendChild(a);
     a.click();
     a.remove();
-  }
+}
 
-  // Collect all previewable files for navigation
-  <?php
-  $previewableFiles = [];
-  foreach ($files as $fileName) {
-      $relativePath = $currentRel . '/' . $fileName;
-      $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
-      $iconClass = getIconClass($fileName);
-      $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL, 'type' => isImage($fileName) ? 'image' : (isVideo($fileName) ? 'video' : 'other'), 'icon' => $iconClass];
-  }
-  ?>
+// Collect all previewable files for navigation
+<?php
+$previewableFiles = [];
+foreach ($files as $fileName) {
+    $relativePath = $currentRel . '/' . $fileName;
+    $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
+    $iconClass = getIconClass($fileName);
+    $thumbnailURL = isVideo($fileName) ? getVideoThumbnail($currentDir . '/' . $fileName, $username) : false;
+    $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL, 'type' => isImage($fileName) ? 'image' : (isVideo($fileName) ? 'video' : 'other'), 'icon' => $iconClass, 'thumbnail' => $thumbnailURL];
+}
+?>
 
-  function openPreviewModal(fileURL, fileName) {
+function openPreviewModal(fileURL, fileName) {
     if (isLoadingImage) return; // Prevent overlapping loads
     console.log("Previewing: " + fileURL);
     const previewModal = document.getElementById('previewModal');
@@ -1696,38 +1748,38 @@ html, body {
 
     let file = previewFiles.find(f => f.name === fileName);
     if (file.type === 'image') {
-      isLoadingImage = true;
-      fetch(fileURL)
-        .then(response => {
-          if (!response.ok) throw new Error('Preview failed: ' + response.status);
-          return response.blob();
-        })
-        .then(blob => {
-          const img = document.createElement('img');
-          img.src = URL.createObjectURL(blob);
-          imageContainer.appendChild(img);
-          imageContainer.style.display = 'flex';
-          previewClose.style.display = 'none'; // Hide close button for images
-          previewContent.classList.add('image-preview'); // Remove box styling
-        })
-        .catch(error => showAlert('Preview error: ' + error.message))
-        .finally(() => {
-          isLoadingImage = false; // Reset flag after loading
-        });
+        isLoadingImage = true;
+        fetch(file.url)
+            .then(response => {
+                if (!response.ok) throw new Error('Preview failed: ' + response.status);
+                return response.blob();
+            })
+            .then(blob => {
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(blob);
+                imageContainer.appendChild(img);
+                imageContainer.style.display = 'flex';
+                previewClose.style.display = 'none'; // Hide close button for images
+                previewContent.classList.add('image-preview'); // Remove box styling
+            })
+            .catch(error => showAlert('Preview error: ' + error.message))
+            .finally(() => {
+                isLoadingImage = false; // Reset flag after loading
+            });
     } else if (file.type === 'video') {
-      videoPlayer.src = fileURL;
-      videoContainer.style.display = 'block';
-      previewClose.style.display = 'block'; // Show close button for videos
-      setupVideoPlayer(fileURL, fileName);
+        videoPlayer.src = file.url;
+        videoContainer.style.display = 'block';
+        previewClose.style.display = 'block'; // Show close button for videos
+        setupVideoPlayer(file.url, file.name);
     } else if (file.type === 'other') {
-      const icon = document.createElement('i');
-      icon.className = file.icon;
-      iconContainer.appendChild(icon);
-      iconContainer.style.display = 'flex';
-      previewClose.style.display = 'block'; // Show close button for others
+        const icon = document.createElement('i');
+        icon.className = file.icon;
+        iconContainer.appendChild(icon);
+        iconContainer.style.display = 'flex';
+        previewClose.style.display = 'block'; // Show close button for others
     } else {
-      downloadFile(fileURL);
-      return;
+        downloadFile(file.url);
+        return;
     }
 
     previewModal.style.display = 'flex';
@@ -1735,14 +1787,14 @@ html, body {
 
     // Add click-outside-to-close functionality for images
     previewModal.onclick = function(e) {
-      if (e.target === previewModal && file.type === 'image') {
-        closePreviewModal();
-      }
+        if (e.target === previewModal && file.type === 'image') {
+            closePreviewModal();
+        }
     };
-  }
-  window.openPreviewModal = openPreviewModal;
+}
+window.openPreviewModal = openPreviewModal;
 
-  function setupVideoPlayer(fileURL, fileName) {
+function setupVideoPlayer(fileURL, fileName) {
     const video = document.getElementById('videoPlayer');
     const playPauseBtn = document.getElementById('playPauseBtn');
     const seekBar = document.getElementById('seekBar');
@@ -1762,67 +1814,67 @@ html, body {
     if (savedTime) video.currentTime = parseFloat(savedTime);
 
     video.onloadedmetadata = () => {
-      seekBar.max = video.duration;
-      duration.textContent = formatTime(video.duration);
+        seekBar.max = video.duration;
+        duration.textContent = formatTime(video.duration);
     };
 
     video.ontimeupdate = () => {
-      seekBar.value = video.currentTime;
-      currentTime.textContent = formatTime(video.currentTime);
-      localStorage.setItem(videoKey, video.currentTime);
+        seekBar.value = video.currentTime;
+        currentTime.textContent = formatTime(video.currentTime);
+        localStorage.setItem(videoKey, video.currentTime);
     };
 
     playPauseBtn.onclick = () => {
-      if (video.paused) {
-        video.play();
-        playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-      } else {
-        video.pause();
-        playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-      }
+        if (video.paused) {
+            video.play();
+            playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+        } else {
+            video.pause();
+            playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+        }
     };
 
     seekBar.oninput = () => {
-      video.currentTime = seekBar.value;
+        video.currentTime = seekBar.value;
     };
 
     muteBtn.onclick = () => {
-      video.muted = !video.muted;
-      muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
-      volumeBar.value = video.muted ? 0 : video.volume;
+        video.muted = !video.muted;
+        muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
+        volumeBar.value = video.muted ? 0 : video.volume;
     };
 
     volumeBar.oninput = () => {
-      video.volume = volumeBar.value;
-      video.muted = (volumeBar.value == 0);
-      muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
+        video.volume = volumeBar.value;
+        video.muted = (volumeBar.value == 0);
+        muteBtn.innerHTML = video.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
     };
 
     fullscreenBtn.onclick = () => {
-      if (!document.fullscreenElement) {
-        previewModal.classList.add('fullscreen');
-        previewModal.requestFullscreen();
-      } else {
-        document.exitFullscreen();
-        previewModal.classList.remove('fullscreen');
-      }
+        if (!document.fullscreenElement) {
+            previewModal.classList.add('fullscreen');
+            previewModal.requestFullscreen();
+        } else {
+            document.exitFullscreen();
+            previewModal.classList.remove('fullscreen');
+        }
     };
 
     video.onclick = () => playPauseBtn.click();
 
     video.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      playPauseBtn.click();
+        e.preventDefault();
+        playPauseBtn.click();
     });
-  }
+}
 
-  function formatTime(seconds) {
+function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  }
+}
 
-  function closePreviewModal() {
+function closePreviewModal() {
     const video = document.getElementById('videoPlayer');
     video.pause();
     video.src = '';
@@ -1835,10 +1887,10 @@ html, body {
     isLoadingImage = false; // Reset loading flag
     previewFiles = [];
     currentPreviewIndex = -1;
-  }
-  window.closePreviewModal = closePreviewModal;
+}
+window.closePreviewModal = closePreviewModal;
 
-  function navigatePreview(direction) {
+function navigatePreview(direction) {
     if (previewFiles.length === 0 || currentPreviewIndex === -1 || isLoadingImage) return;
 
     currentPreviewIndex += direction;
@@ -1847,55 +1899,55 @@ html, body {
 
     const file = previewFiles[currentPreviewIndex];
     openPreviewModal(file.url, file.name);
-  }
+}
 
-  function updateNavigationButtons() {
+function updateNavigationButtons() {
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
     prevBtn.disabled = previewFiles.length <= 1;
     nextBtn.disabled = previewFiles.length <= 1;
-  }
+}
 
-  const uploadForm = document.getElementById('uploadForm');
-  const fileInput = document.getElementById('fileInput');
-  const uploadBtn = document.getElementById('uploadBtn');
-  const uploadProgressContainer = document.getElementById('uploadProgressContainer');
-  const uploadProgressBar = document.getElementById('uploadProgressBar');
-  const uploadProgressPercent = document.getElementById('uploadProgressPercent');
-  const cancelUploadBtn = document.getElementById('cancelUploadBtn');
-  const dropZone = document.getElementById('dropZone');
-  const mainContent = document.querySelector('.main-content');
-  const fileList = document.getElementById('fileList');
-  const gridToggleBtn = document.getElementById('gridToggleBtn');
+const uploadForm = document.getElementById('uploadForm');
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+const uploadProgressContainer = document.getElementById('uploadProgressContainer');
+const uploadProgressBar = document.getElementById('uploadProgressBar');
+const uploadProgressPercent = document.getElementById('uploadProgressPercent');
+const cancelUploadBtn = document.getElementById('cancelUploadBtn');
+const dropZone = document.getElementById('dropZone');
+const mainContent = document.querySelector('.main-content');
+const fileList = document.getElementById('fileList');
+const gridToggleBtn = document.getElementById('gridToggleBtn');
 
-  uploadBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
+uploadBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
     if (fileInput.files.length) startUpload(fileInput.files);
-  });
+});
 
-  mainContent.addEventListener('dragover', (e) => {
+mainContent.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropZone.classList.add('active');
-  });
-  mainContent.addEventListener('dragleave', (e) => {
+});
+mainContent.addEventListener('dragleave', (e) => {
     e.preventDefault();
     dropZone.classList.remove('active');
-  });
-  mainContent.addEventListener('drop', (e) => {
+});
+mainContent.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('active');
     const files = e.dataTransfer.files;
     if (files.length > 0) startUpload(files);
-  });
+});
 
-  function startUpload(fileList) {
+function startUpload(fileList) {
     for (let file of fileList) {
-      let totalUploaded = 0; // Track total bytes uploaded for this file
-      uploadChunk(file, 0, file.name, totalUploaded);
+        let totalUploaded = 0; // Track total bytes uploaded for this file
+        uploadChunk(file, 0, file.name, totalUploaded);
     }
-  }
+}
 
-  function uploadChunk(file, startByte, fileName, totalUploaded) {
+function uploadChunk(file, startByte, fileName, totalUploaded) {
     const chunkSize = 10 * 1024 * 1024; // 10 MB chunks
     const endByte = Math.min(startByte + chunkSize, file.size);
     const chunk = file.slice(startByte, endByte);
@@ -1913,95 +1965,93 @@ html, body {
     const maxAttempts = 3;
 
     function attemptUpload() {
-      const xhr = new XMLHttpRequest();
-      currentXhr = xhr;
-      xhr.open('POST', uploadForm.action, true);
-      xhr.timeout = 3600000;
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const chunkUploaded = e.loaded; // Bytes uploaded in this chunk
-          const totalBytesUploaded = totalUploaded + chunkUploaded;
-          const totalPercent = Math.round((totalBytesUploaded / file.size) * 100 * 10) / 10; // One decimal place
-          uploadProgressBar.style.width = totalPercent + '%';
-          uploadProgressPercent.textContent = `${totalPercent}% - Uploading ${fileName}`;
-        }
-      };
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          totalUploaded += (endByte - startByte); // Update total bytes uploaded
-          if (endByte < file.size) {
-            uploadChunk(file, endByte, fileName, totalUploaded);
-          } else {
-            showAlert('Upload completed successfully.');
-            uploadProgressContainer.style.display = 'none';
-            location.reload();
-          }
-        } else {
-          handleUploadError(xhr, attempts, maxAttempts);
-        }
-      };
-      xhr.onerror = () => handleUploadError(xhr, attempts, maxAttempts);
-      xhr.ontimeout = () => handleUploadError(xhr, attempts, maxAttempts);
-      xhr.send(formData);
+        const xhr = new XMLHttpRequest();
+        currentXhr = xhr;
+        xhr.open('POST', uploadForm.action, true);
+        xhr.timeout = 3600000;
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const chunkUploaded = e.loaded; // Bytes uploaded in this chunk
+                const totalBytesUploaded = totalUploaded + chunkUploaded;
+                const totalPercent = Math.round((totalBytesUploaded / file.size) * 100 * 10) / 10; // One decimal place
+                uploadProgressBar.style.width = totalPercent + '%';
+                uploadProgressPercent.textContent = `${totalPercent}% - Uploading ${fileName}`;
+            }
+        };
+        xhr.onload = () => {
+            if (xhr.status === 200) {
+                totalUploaded += (endByte - startByte); // Update total bytes uploaded
+                if (endByte < file.size) {
+                    uploadChunk(file, endByte, fileName, totalUploaded);
+                } else {
+                    showAlert('Upload completed successfully.');
+                    uploadProgressContainer.style.display = 'none';
+                    location.reload();
+                }
+            } else {
+                handleUploadError(xhr, attempts, maxAttempts);
+            }
+        };
+        xhr.onerror = () => handleUploadError(xhr, attempts, maxAttempts);
+        xhr.ontimeout = () => handleUploadError(xhr, attempts, maxAttempts);
+        xhr.send(formData);
     }
 
     function handleUploadError(xhr, attempts, maxAttempts) {
-      attempts++;
-      if (attempts < maxAttempts) {
-        showAlert(`Upload failed for ${fileName} (Attempt ${attempts}). Retrying in 5 seconds... Status: ${xhr.status} - ${xhr.statusText}`);
-        setTimeout(attemptUpload, 5000);
-      } else {
-        showAlert(`Upload failed for ${fileName} after ${maxAttempts} attempts. Status: ${xhr.status} - ${xhr.statusText}. Please check server logs or network connection.`);
-        uploadProgressContainer.style.display = 'none';
-      }
+        attempts++;
+        if (attempts < maxAttempts) {
+            showAlert(`Upload failed for ${fileName} (Attempt ${attempts}). Retrying in 5 seconds... Status: ${xhr.status} - ${xhr.statusText}`);
+            setTimeout(attemptUpload, 5000);
+        } else {
+            showAlert(`Upload failed for ${fileName} after ${maxAttempts} attempts. Status: ${xhr.status} - ${xhr.statusText}. Please check server logs or network connection.`);
+            uploadProgressContainer.style.display = 'none';
+        }
     }
 
     attemptUpload();
-  }
+}
 
-  cancelUploadBtn.addEventListener('click', () => {
+cancelUploadBtn.addEventListener('click', () => {
     if (currentXhr) {
-      currentXhr.abort();
-      uploadProgressContainer.style.display = 'none';
-      fileInput.value = "";
-      showAlert('Upload canceled.');
+        currentXhr.abort();
+        uploadProgressContainer.style.display = 'none';
+        fileInput.value = "";
+        showAlert('Upload canceled.');
     }
-  });
+});
 
-  const themeToggleBtn = document.getElementById('themeToggleBtn');
-  const body = document.body;
-  const savedTheme = localStorage.getItem('theme') || 'dark';
-  if (savedTheme === 'light') {
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const body = document.body;
+const savedTheme = localStorage.getItem('theme') || 'dark';
+if (savedTheme === 'light') {
     body.classList.add('light-mode');
     themeToggleBtn.querySelector('i').classList.replace('fa-moon', 'fa-sun');
-  } else {
+} else {
     body.classList.remove('light-mode');
     themeToggleBtn.querySelector('i').classList.replace('fa-sun', 'fa-moon');
-  }
-  themeToggleBtn.addEventListener('click', () => {
+}
+themeToggleBtn.addEventListener('click', () => {
     body.classList.toggle('light-mode');
     const isLightMode = body.classList.contains('light-mode');
     themeToggleBtn.querySelector('i').classList.toggle('fa-moon', !isLightMode);
     themeToggleBtn.querySelector('i').classList.toggle('fa-sun', isLightMode);
     localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
-  });
+});
 
-  // Grid View Toggle with Persistence
-  let isGridView = localStorage.getItem('gridView') === 'true';
-  function updateGridView() {
+// Grid View Toggle with Persistence
+let isGridView = localStorage.getItem('gridView') === 'true';
+function updateGridView() {
     fileList.classList.toggle('grid-view', isGridView);
     gridToggleBtn.querySelector('i').classList.toggle('fa-th', isGridView);
     gridToggleBtn.querySelector('i').classList.toggle('fa-list', !isGridView);
     gridToggleBtn.title = isGridView ? 'Switch to List View' : 'Switch to Grid View';
-  }
-  // Initialize grid view state
-  updateGridView();
+}
+// Initialize grid view state
+updateGridView();
 
-  gridToggleBtn.addEventListener('click', () => {
+gridToggleBtn.addEventListener('click', () => {
     isGridView = !isGridView;
     localStorage.setItem('gridView', isGridView);
     updateGridView();
-  });
+});
 </script>
-</body>
-</html>
