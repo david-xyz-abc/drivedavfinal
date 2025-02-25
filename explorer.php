@@ -24,55 +24,6 @@ log_debug("Loggedin: " . (isset($_SESSION['loggedin']) ? var_export($_SESSION['l
 log_debug("Username: " . (isset($_SESSION['username']) ? $_SESSION['username'] : "Not set"));
 log_debug("GET params: " . var_export($_GET, true));
 
-// Function to generate and get video thumbnail
-function getVideoThumbnail($filePath, $username) {
-    $thumbnailDir = "/var/www/html/webdav/users/$username/thumbnails";
-    if (!is_dir($thumbnailDir)) {
-        mkdir($thumbnailDir, 0777, true);
-        chown($thumbnailDir, 'www-data');
-        chgrp($thumbnailDir, 'www-data');
-    }
-
-    $fileName = basename($filePath);
-    $thumbnailPath = "$thumbnailDir/" . pathinfo($fileName, PATHINFO_FILENAME) . '_thumb.jpg';
-
-    if (!file_exists($thumbnailPath)) {
-        // Use FFmpeg to generate a thumbnail (e.g., first frame at 1 second)
-        $command = "ffmpeg -i " . escapeshellarg($filePath) . " -ss 1 -frames:v 1 -q:v 2 " . escapeshellarg($thumbnailPath) . " 2>/dev/null";
-        exec($command, $output, $returnCode);
-        
-        if ($returnCode !== 0) {
-            log_debug("Failed to generate thumbnail for $filePath: FFmpeg error");
-            return false; // Fallback if thumbnail generation fails
-        }
-        chown($thumbnailPath, 'www-data');
-        chgrp($thumbnailPath, 'www-data');
-        chmod($thumbnailPath, 0664);
-    }
-
-    return "/selfhostedgdrive/explorer.php?action=serve_thumbnail&file=" . urlencode($fileName) . "&user=" . urlencode($username);
-}
-
-// Add thumbnail serving logic
-if (isset($_GET['action']) && $_GET['action'] === 'serve_thumbnail' && isset($_GET['file']) && isset($_GET['user'])) {
-    $username = urldecode($_GET['user']);
-    $fileName = urldecode($_GET['file']);
-    $thumbnailDir = realpath("/var/www/html/webdav/users/$username/thumbnails");
-    $thumbnailPath = $thumbnailDir . '/' . pathinfo($fileName, PATHINFO_FILENAME) . '_thumb.jpg';
-
-    if (file_exists($thumbnailPath)) {
-        header("Content-Type: image/jpeg");
-        header("Cache-Control: public, max-age=31536000");
-        readfile($thumbnailPath);
-        exit;
-    } else {
-        log_debug("Thumbnail not found for $fileName");
-        header("HTTP/1.1 404 Not Found");
-        echo "Thumbnail not found.";
-        exit;
-    }
-}
-
 // Optimized file serving with range support
 if (isset($_GET['action']) && $_GET['action'] === 'serve' && isset($_GET['file'])) {
     if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true || !isset($_SESSION['username'])) {
@@ -855,7 +806,7 @@ html, body {
     display: block;
     width: 100%;
     height: 120px;
-    object-fit: cover; /* Ensures the thumbnail scales to fit */
+    object-fit: cover;
     border-radius: 4px;
     margin-bottom: 10px;
 }
@@ -1434,16 +1385,11 @@ html, body {
                 $isImageFile = isImage($fileName);
                 $isVideoFile = isVideo($fileName);
                 log_debug("File URL for $fileName: $fileURL");
-
-                // Generate thumbnail URL for videos
-                $thumbnailURL = $isVideoFile ? getVideoThumbnail($currentDir . '/' . $fileName, $username) : false;
             ?>
             <div class="file-row" onclick="openPreviewModal('<?php echo htmlspecialchars($fileURL); ?>', '<?php echo addslashes($fileName); ?>')">
                 <i class="<?php echo $iconClass; ?> file-icon<?php echo $isImageFile || $isVideoFile ? '' : ' no-preview'; ?>"></i>
                 <?php if ($isImageFile): ?>
                     <img src="<?php echo htmlspecialchars($fileURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
-                <?php elseif ($isVideoFile && $thumbnailURL): ?>
-                    <img src="<?php echo htmlspecialchars($thumbnailURL); ?>" alt="<?php echo htmlspecialchars($fileName); ?>" class="file-preview" loading="lazy">
                 <?php endif; ?>
                 <div class="file-name" title="<?php echo htmlspecialchars($fileName); ?>">
                     <?php echo htmlspecialchars($fileName); ?>
@@ -1498,7 +1444,7 @@ html, body {
   </div>
 
   
-  <script>
+ <script>
 let selectedFolder = null;
 let currentXhr = null;
 let previewFiles = []; // Array to store previewable files
@@ -1714,8 +1660,7 @@ foreach ($files as $fileName) {
     $relativePath = $currentRel . '/' . $fileName;
     $fileURL = "/selfhostedgdrive/explorer.php?action=serve&file=" . urlencode($relativePath);
     $iconClass = getIconClass($fileName);
-    $thumbnailURL = isVideo($fileName) ? getVideoThumbnail($currentDir . '/' . $fileName, $username) : false;
-    $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL, 'type' => isImage($fileName) ? 'image' : (isVideo($fileName) ? 'video' : 'other'), 'icon' => $iconClass, 'thumbnail' => $thumbnailURL];
+    $previewableFiles[] = ['name' => $fileName, 'url' => $fileURL, 'type' => isImage($fileName) ? 'image' : (isVideo($fileName) ? 'video' : 'other'), 'icon' => $iconClass];
 }
 ?>
 
