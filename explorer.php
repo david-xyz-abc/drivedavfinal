@@ -932,21 +932,21 @@ html, body {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.8);
+  width: 100vw; /* Use viewport width */
+  height: 100vh; /* Use viewport height */
+  background: rgba(0, 0, 0, 0.8);
   justify-content: center;
   align-items: center;
   z-index: 9998;
-  overflow: hidden; /* Prevent scrolling */
+  overflow: hidden; /* Prevent any overflow */
 }
 
 #previewContent {
   position: relative;
-  width: 90vw;
-  max-width: 90vw;
+  width: auto; /* Let the content define its width */
+  max-width: 90vw; /* Limit width to 90% of viewport */
   height: auto;
-  max-height: 90vh;
+  max-height: 90vh; /* Limit height to 90% of viewport */
   background: var(--content-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -961,20 +961,20 @@ html, body {
   background: none;
   border: none;
   padding: 0;
-  max-width: 100vw;
-  max-height: 100vh;
-  width: auto;
-  height: auto;
+  max-width: 100vw; /* Allow full width for images */
+  max-height: 100vh; /* Allow full height for images */
 }
 
 #previewNav {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  padding: 0 20px;
-  position: absolute;
+  position: fixed; /* Change from absolute to fixed */
   top: 50%;
   transform: translateY(-50%);
+  width: 100vw; /* Span the full viewport width */
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px;
+  box-sizing: border-box;
+  z-index: 9999; /* Ensure it stays above content */
 }
 
 #previewNav button {
@@ -999,7 +999,7 @@ html, body {
 }
 
 #previewClose {
-  position: absolute;
+  position: fixed; /* Change to fixed for consistent placement */
   top: 20px;
   right: 20px;
   cursor: pointer;
@@ -1206,17 +1206,17 @@ html, body {
   justify-content: center;
   width: 100%;
   height: 100%;
-  max-width: 100vw;
-  max-height: 100vh;
-  overflow: hidden; /* Ensure no overflow */
+  max-width: 90vw; /* Constrain to 90% of viewport width */
+  max-height: 90vh; /* Constrain to 90% of viewport height */
+  overflow: hidden; /* Prevent overflow */
 }
 
 #imagePreviewContainer img {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: 100%; /* Ensure image doesn’t exceed container width */
+  max-height: 100%; /* Ensure image doesn’t exceed container height */
   width: auto;
   height: auto;
-  object-fit: contain; /* Ensure the image fits within the container */
+  object-fit: contain; /* Scale image to fit within container */
   display: block;
 }
 
@@ -1296,7 +1296,7 @@ html, body {
 }
 
 #dropZone.active { display: flex; }
-  </style>
+</style>
 </head>
 <body>
   <div class="app-container">
